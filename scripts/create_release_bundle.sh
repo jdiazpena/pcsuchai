@@ -9,7 +9,8 @@ ARCHIVE="$DESTINATION/pcsuchai-${VERSION}.tar.gz"
 cd "$ROOT_DIR"
 tar -czf "$ARCHIVE" \
   --transform "s#^\./#pcsuchai-${VERSION}/#" \
-  --exclude='./.git' --exclude='./.agents' --exclude='./.codex' \
+  --exclude='./.git' --exclude='./.pcsuchai-git' \
+  --exclude='./.agents' --exclude='./.codex' \
   --exclude='./archive' --exclude='./outputs' --exclude='./dist' \
   --exclude='./.pytest_cache' --exclude='*/__pycache__' --exclude='*.pyc' \
   .
