@@ -1,0 +1,37 @@
+# Local reference material and generated scientific products
+archive/
+outputs/*
+!outputs/.gitkeep
+installation-reports/
+
+# Local Codex/agent state
+.agents/
+.codex/
+.pcsuchai-git/
+
+# Downloaded sources and architecture-specific native build caches
+vendor/sources/
+vendor/wheels/
+
+# Python caches, environments, builds, and test reports
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+build/
+dist/
+
+# Local configuration and editor/OS files
+.env
+.env.*
+!.env.example
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*~

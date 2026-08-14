@@ -1,0 +1,9 @@
+--- a/meson.build
++++ b/meson.build
+@@ -68,1 +68,5 @@
+-add_project_link_arguments('-lquadmath', language: ['c', 'fortran'])
++# Debian ARM does not provide libquadmath. ApexPy does not use REAL(16), so
++# only request this optional GNU runtime on architectures where it is shipped.
++if host_machine.cpu_family() not in ['aarch64', 'arm']
++  add_project_link_arguments('-lquadmath', language: ['c', 'fortran'])
++endif

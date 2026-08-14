@@ -1,0 +1,10 @@
+{
+  "plots": [
+    {"name": "01_narrow_day_geographic", "particle_gt": 100, "mlt_intervals": [[9, 15]], "marker_size": 25, "calculate_centroid": true},
+    {"name": "02_narrow_day_magnetic", "coordinate_view": "magnetic", "particle_gt": 100, "mlt_intervals": [[9, 15]], "marker_size": 25},
+    {"name": "03_narrow_day_footpoint", "coordinate_view": "footpoint", "particle_gt": 100, "mlt_intervals": [[9, 15]], "marker_size": 25},
+    {"name": "04_narrow_night_geographic", "particle_gt": 100, "mlt_intervals": [[21, 3]], "marker_size": 25, "calculate_centroid": true},
+    {"name": "05_narrow_night_magnetic", "coordinate_view": "magnetic", "particle_gt": 100, "mlt_intervals": [[21, 3]], "marker_size": 25},
+    {"name": "06_narrow_night_footpoint", "coordinate_view": "footpoint", "particle_gt": 100, "mlt_intervals": [[21, 3]], "marker_size": 25}
+  ]
+}

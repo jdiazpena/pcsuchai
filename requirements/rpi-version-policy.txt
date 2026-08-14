@@ -1,0 +1,10 @@
+# Strict cross-device benchmark policy. The installer handles ApexPy separately.
+numpy==2.5.2
+matplotlib==3.10.5
+astropy==7.1.0
+sgp4==2.27
+skyfield==1.55
+aacgmv2==2.7.0
+apexpy==2.1.1
+psutil==7.0.0
+pcsuchai==0.1.0

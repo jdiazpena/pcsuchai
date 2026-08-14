@@ -1,0 +1,26 @@
+{
+  "plots": [
+    {
+      "name": "saa_day_particle_footpoints",
+      "variable": "particle_count",
+      "coordinate_view": "footpoint",
+      "include_times": [["2018-07-26T00:00:00Z", "2018-08-26T23:59:59Z"]],
+      "exclude_times": [["2018-08-22T00:00:00Z", "2018-08-23T00:00:00Z"]],
+      "mlt_sector": "day",
+      "day_mlt_start": 6,
+      "day_mlt_end": 18,
+      "geographic_latitude_min": -60,
+      "geographic_latitude_max": 10,
+      "geographic_longitude_min": -100,
+      "geographic_longitude_max": 40,
+      "particle_gt": 100,
+      "scale": "linear",
+      "cmap": "plasma",
+      "marker_size": 25,
+      "width_px": 1400,
+      "height_px": 700,
+      "dpi": 100,
+      "extent": [-100, 40, -70, 20]
+    }
+  ]
+}

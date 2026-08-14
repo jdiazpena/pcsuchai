@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "name": "full-products",
+  "description": "Full-data benchmark including all archive-parity image products.",
+  "python_version": "3.13.5",
+  "official": true,
+  "orbit_backends": ["astropy", "skyfield"],
+  "magnetic_backends": ["aacgmv2", "apexpy"],
+  "repeats": 3,
+  "warmups": 1,
+  "limit": null,
+  "plot_config": "configs/plots/archive-full.json",
+  "cooldown_seconds": 10,
+  "cooldown_until_c": 45,
+  "cooldown_max_seconds": 600,
+  "collect_perf": false,
+  "timeout_seconds": 10800
+}

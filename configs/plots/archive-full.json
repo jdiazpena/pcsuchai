@@ -1,0 +1,42 @@
+{
+  "plots": [
+    {"name": "01_all_particle_geographic", "coordinate_view": "geographic", "marker_size": 25},
+    {"name": "02_all_particle_magnetic", "coordinate_view": "magnetic", "marker_size": 25},
+    {"name": "03_all_particle_footpoint", "coordinate_view": "footpoint", "marker_size": 25},
+
+    {"name": "04_particle_gt100_geographic", "coordinate_view": "geographic", "particle_gt": 100, "marker_size": 25},
+    {"name": "05_particle_gt100_magnetic", "coordinate_view": "magnetic", "particle_gt": 100, "marker_size": 25},
+    {"name": "06_particle_gt100_footpoint", "coordinate_view": "footpoint", "particle_gt": 100, "marker_size": 25},
+
+    {"name": "07_day_particle_gt100_geographic", "coordinate_view": "geographic", "particle_gt": 100, "mlt_sector": "day", "marker_size": 25, "calculate_centroid": true},
+    {"name": "08_day_particle_gt100_magnetic", "coordinate_view": "magnetic", "particle_gt": 100, "mlt_sector": "day", "marker_size": 25},
+    {"name": "09_day_particle_gt100_footpoint", "coordinate_view": "footpoint", "particle_gt": 100, "mlt_sector": "day", "marker_size": 25},
+    {"name": "10_night_particle_gt100_geographic", "coordinate_view": "geographic", "particle_gt": 100, "mlt_sector": "night", "marker_size": 25, "calculate_centroid": true},
+    {"name": "11_night_particle_gt100_magnetic", "coordinate_view": "magnetic", "particle_gt": 100, "mlt_sector": "night", "marker_size": 25},
+    {"name": "12_night_particle_gt100_footpoint", "coordinate_view": "footpoint", "particle_gt": 100, "mlt_sector": "night", "marker_size": 25},
+
+    {"name": "13_plasma_temperature_lt10000", "variable": "plasma_temperature", "value_lt": 10000, "marker_size": 25},
+    {"name": "14_electron_density_300k_lt1e21", "variable": "electron_density_300k", "value_lt": 1e21, "marker_size": 25},
+    {"name": "15_electron_density_3000k_lt1e21", "variable": "electron_density_3000k", "value_lt": 1e21, "marker_size": 25},
+    {"name": "16_plasma_current", "variable": "plasma_current", "marker_size": 25},
+    {"name": "17_plasma_voltage", "variable": "plasma_voltage", "marker_size": 25},
+    {"name": "18_sweep_voltage", "variable": "sweep_voltage", "marker_size": 25},
+
+    {"name": "19_jul26_aug26_day_particle_gt100", "particle_gt": 100, "mlt_sector": "day", "include_times": [["2018-07-26T00:00:00Z", "2018-08-26T00:00:00Z"]], "marker_size": 25},
+    {"name": "20_jul26_aug26_night_particle_gt100", "particle_gt": 100, "mlt_sector": "night", "include_times": [["2018-07-26T00:00:00Z", "2018-08-26T00:00:00Z"]], "marker_size": 25},
+
+    {"name": "21_storm_particle_gt100", "particle_gt": 100, "include_times": [["2018-08-22T00:00:00Z", "2018-09-15T00:00:00Z"]], "marker_size": 25},
+    {"name": "22_nonstorm_particle_gt100", "particle_gt": 100, "exclude_times": [["2018-08-22T00:00:00Z", "2018-09-15T00:00:00Z"]], "marker_size": 25},
+    {"name": "23_storm_electron_density_3000k", "variable": "electron_density_3000k", "value_lt": 1e21, "include_times": [["2018-08-22T00:00:00Z", "2018-09-15T00:00:00Z"]], "marker_size": 25},
+    {"name": "24_storm_electron_density_300k", "variable": "electron_density_300k", "value_lt": 1e21, "include_times": [["2018-08-22T00:00:00Z", "2018-09-15T00:00:00Z"]], "marker_size": 25},
+    {"name": "25_storm_plasma_temperature_lt550", "variable": "plasma_temperature", "value_lt": 550, "include_times": [["2018-08-22T00:00:00Z", "2018-09-15T00:00:00Z"]], "marker_size": 25},
+
+    {"name": "26_prestorm_particle_gt100", "particle_gt": 100, "include_times": [["2018-08-01T00:00:00Z", "2018-08-22T00:00:00Z"]], "marker_size": 25},
+    {"name": "27_prestorm_electron_density_3000k", "variable": "electron_density_3000k", "value_lt": 1e21, "include_times": [["2018-08-01T00:00:00Z", "2018-08-22T00:00:00Z"]], "marker_size": 25},
+    {"name": "28_prestorm_electron_density_300k", "variable": "electron_density_300k", "value_lt": 1e21, "include_times": [["2018-08-01T00:00:00Z", "2018-08-22T00:00:00Z"]], "marker_size": 25},
+    {"name": "29_prestorm_plasma_temperature_lt550", "variable": "plasma_temperature", "value_lt": 550, "include_times": [["2018-08-01T00:00:00Z", "2018-08-22T00:00:00Z"]], "marker_size": 25},
+    {"name": "30_poststorm_particle_gt100", "particle_gt": 100, "include_times": [["2018-09-16T00:00:00Z", "2018-10-10T00:00:00Z"]], "marker_size": 25},
+    {"name": "31_july_particle_gt100", "particle_gt": 100, "include_times": [["2018-07-01T00:00:00Z", "2018-07-31T00:00:00Z"]], "marker_size": 25},
+    {"name": "32_time_availability", "plot_type": "time_availability", "marker_size": 12, "height_px": 350}
+  ]
+}

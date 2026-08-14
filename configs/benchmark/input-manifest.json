@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "files": {
+    "data/raw/langmuir-2018-2.csv": "17d9c76532f61a7509305089be41cbed5e426a2301fd85cc7055c939c969d529",
+    "data/tle/suchai1.tle": "c82512ff8985116c3ec8c7794f8fa5dae5942c48c9415606a9863807583880ec",
+    "data/eop/finals2000A.all": "d005c172c7027d2abb98014a6498ec49ec39281f1b57be18f06dc486ecc92029",
+    "configs/plots/archive-full.json": "1c7a642ccbfa34eefa0dda6c3af3f2bfc5327e963b620909df4b4f9a493e614d"
+  }
+}

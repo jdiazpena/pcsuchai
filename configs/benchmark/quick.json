@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "name": "quick",
+  "description": "Fast installation and end-to-end health check; not publishable performance data.",
+  "python_version": "3.13.5",
+  "official": false,
+  "orbit_backends": ["astropy", "skyfield"],
+  "magnetic_backends": ["aacgmv2", "apexpy"],
+  "repeats": 2,
+  "warmups": 0,
+  "limit": 100,
+  "plot_config": null,
+  "cooldown_seconds": 0,
+  "cooldown_until_c": null,
+  "cooldown_max_seconds": 0,
+  "collect_perf": false,
+  "timeout_seconds": 1800
+}

@@ -1,0 +1,45 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pcsuchai"
+version = "0.1.0"
+description = "Reproducible SUCHAI-1 Langmuir probe and particle-counter post-processing"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "numpy>=1.26",
+  "matplotlib>=3.8",
+]
+
+[project.optional-dependencies]
+orbit-astropy = ["astropy>=7.1", "sgp4>=2.24"]
+orbit-skyfield = ["skyfield>=1.49", "sgp4>=2.24"]
+magnetic-aacgm = ["aacgmv2>=2.7"]
+magnetic-apex = ["apexpy>=2.1.1"]
+benchmark = ["psutil>=7"]
+test = ["pytest>=8"]
+local = [
+  "astropy>=7.1",
+  "sgp4>=2.24",
+  "skyfield>=1.49",
+  "aacgmv2>=2.7",
+  "apexpy>=2.1.1",
+  "psutil>=7",
+  "pytest>=8",
+]
+
+[project.scripts]
+pcsuchai = "pcsuchai.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+pcsuchai = ["assets/*.npz", "assets/*.md"]
+
+[tool.pytest.ini_options]
+addopts = "-ra"
+testpaths = ["tests"]
+pythonpath = ["src"]
