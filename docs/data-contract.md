@@ -1,6 +1,7 @@
 # Measurement data contract
 
-The canonical source is `data/raw/langmuir-2018-2.csv`. Its name and bytes are
+The canonical source is a private, locally supplied
+`data/raw/langmuir-2018-2.csv`. Its name and bytes are
 preserved from the archive, but it is tab-separated rather than comma-separated.
 
 ## Trusted source products

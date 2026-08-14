@@ -5,6 +5,11 @@ post-processing pipeline as documented, testable Python code. The disorganized
 `archive/` directory is read-only reference material and is not imported by the
 new package.
 
+The original SUCHAI telemetry is private and is not distributed by this
+repository or its release bundles. Place an authorized local copy at
+`data/raw/langmuir-2018-2.csv`; Git ignores that file. The public input manifest
+keeps its checksum so authorized installations can verify the exact dataset.
+
 The first working slice loads only trusted instrument products, assigns the
 nearest historical TLE (including a later TLE when it is closer), propagates the
 orbit through a selectable backend, and produces a minimal geographic

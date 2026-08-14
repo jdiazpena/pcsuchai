@@ -16,3 +16,4 @@
 
 # Scientific inputs are checksum-pinned and must survive clones byte-for-byte.
 data/** binary
+data/raw/README.md text eol=lf

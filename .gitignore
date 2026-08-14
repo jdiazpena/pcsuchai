@@ -4,6 +4,10 @@ outputs/*
 !outputs/.gitkeep
 installation-reports/
 
+# Private SUCHAI telemetry: keep local only, never commit or bundle it.
+data/raw/*
+!data/raw/README.md
+
 # Local Codex/agent state
 .agents/
 .codex/
