@@ -78,3 +78,21 @@ benchmarks are explicitly marked non-official.
 For redistribution, `scripts/create_release_bundle.sh` creates a single
 checksum-protected archive and includes any architecture-specific ApexPy wheels
 previously cached by the installer.
+
+## License and citation
+
+Copyright © 2026 Joaquín Díaz.
+
+The software and original project documentation are licensed under the GNU
+General Public License, version 3 or later (`GPL-3.0-or-later`). You may use,
+study, modify, and redistribute them under that license, but distributed
+derivative software must preserve the notices, provide corresponding source,
+and remain under the GPL. See `LICENSE` and `COPYRIGHT`.
+
+The GPL grant does not relicense private SUCHAI telemetry or third-party
+scientific datasets. Files under `data/` retain their providers' terms unless a
+file explicitly states otherwise. The original SUCHAI measurement CSV is not
+distributed at all.
+
+Academic users should cite the project using `CITATION.cff`. Citation metadata
+supports research credit but does not replace the license conditions.

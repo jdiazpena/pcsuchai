@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -7,7 +7,14 @@ name = "pcsuchai"
 version = "0.1.0"
 description = "Reproducible SUCHAI-1 Langmuir probe and particle-counter post-processing"
 readme = "README.md"
+authors = [{name = "Joaquín Díaz"}]
+license = "GPL-3.0-or-later"
+license-files = ["LICENSE"]
 requires-python = ">=3.11"
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Operating System :: POSIX :: Linux",
+]
 dependencies = [
   "numpy>=1.26",
   "matplotlib>=3.8",
@@ -32,6 +39,10 @@ local = [
 
 [project.scripts]
 pcsuchai = "pcsuchai.cli:main"
+
+[project.urls]
+Repository = "https://github.com/jdiazpena/pcsuchai"
+Documentation = "https://github.com/jdiazpena/pcsuchai/tree/main/docs"
 
 [tool.setuptools.packages.find]
 where = ["src"]
