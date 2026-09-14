@@ -21,14 +21,14 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-orbit-astropy = ["astropy>=7.1", "sgp4>=2.24"]
+orbit-astropy = ["astropy>=7.2.2", "sgp4>=2.24"]
 orbit-skyfield = ["skyfield>=1.49", "sgp4>=2.24"]
 magnetic-aacgm = ["aacgmv2>=2.7"]
 magnetic-apex = ["apexpy>=2.1.1"]
 benchmark = ["psutil>=7"]
 test = ["pytest>=8"]
 local = [
-  "astropy>=7.1",
+  "astropy>=7.2.2",
   "sgp4>=2.24",
   "skyfield>=1.49",
   "aacgmv2>=2.7",

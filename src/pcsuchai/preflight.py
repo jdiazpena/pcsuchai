@@ -24,6 +24,13 @@ PACKAGE_FOR_BACKEND = {
     "apexpy": ("apexpy",),
 }
 
+# Load the modules actually used during propagation, not lazy package roots.
+MODULE_FOR_ORBIT_BACKEND = {
+    "astropy": ("astropy.units", "astropy.coordinates", "astropy.time",
+                "astropy.utils.iers", "sgp4.api"),
+    "skyfield": ("skyfield.api", "sgp4.api"),
+}
+
 
 def _sha256(path: Path) -> str:
     digest = hashlib.sha256()
@@ -53,7 +60,7 @@ def _add(checks: list[dict], name: str, passed: bool, detail: object, required: 
 
 
 def _backend_smoke(name: str) -> str:
-    """Exercise a real conversion, not just an import."""
+    """Check magnetic conversions and import the actual orbit runtime modules."""
 
     if name == "apexpy":
         import numpy as np
@@ -72,7 +79,7 @@ def _backend_smoke(name: str) -> str:
         if not all(map(lambda value: value == value, (lat, lon))):
             raise RuntimeError("AACGMv2 returned non-finite coordinates")
         return f"AACGM=({lat:.6f}, {lon:.6f})"
-    for package in PACKAGE_FOR_BACKEND[name]:
+    for package in MODULE_FOR_ORBIT_BACKEND[name]:
         importlib.import_module(package)
     return "imports succeeded"
 

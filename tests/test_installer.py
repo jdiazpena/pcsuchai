@@ -50,8 +50,28 @@ def test_installer_uses_normal_global_pip_and_checks_only_suchai() -> None:
     assert "export PATH=\"/usr/local/bin:/usr/bin:/bin:$PATH\"" in source
     assert "--no-build-isolation" in source
     assert "optional-quadmath.patch" in source
+    assert '"astropy.units"' in source
+    assert '"astropy.coordinates"' in source
+    assert '"astropy.time"' in source
+    assert '"sgp4.api"' in source
+    assert '"skyfield.api"' in source
     assert source.index("1/3:") < source.index("2/3:") < source.index("3/3:")
     assert source.index("scripts/check_dependencies.py") < source.index("Installation complete")
+
+
+def test_astropy_compatibility_pin_is_consistent_and_preserves_apex_reference() -> None:
+    import tomllib
+
+    common = (ROOT / "requirements/rpi-common.txt").read_text()
+    policy = (ROOT / "requirements/rpi-version-policy.txt").read_text()
+    for source in (common, policy):
+        assert "numpy==2.5.2" in source
+        assert "astropy==7.2.2" in source
+        assert "astropy==7.1.0" not in source
+    assert "apexpy==2.1.1" in policy
+    extras = tomllib.loads((ROOT / "pyproject.toml").read_text())["project"]["optional-dependencies"]
+    assert "astropy>=7.2.2" in extras["orbit-astropy"]
+    assert "astropy>=7.2.2" in extras["local"]
 
 
 def test_global_install_command_does_not_force_or_use_user_install() -> None:

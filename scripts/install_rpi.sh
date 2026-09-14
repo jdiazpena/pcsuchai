@@ -146,7 +146,10 @@ import importlib
 import numpy as np
 from apexpy import Apex
 
-for module in ("numpy", "matplotlib", "astropy", "sgp4", "skyfield",
+# Top-level imports alone miss runtime API incompatibilities. In particular,
+# astropy.units must load successfully before accepting the orbit backend.
+for module in ("numpy", "matplotlib", "astropy.units", "astropy.coordinates",
+               "astropy.time", "astropy.utils.iers", "sgp4.api", "skyfield.api",
                "aacgmv2", "apexpy", "psutil", "pcsuchai"):
     importlib.import_module(module)
     print(f"Import PASS: {module}")

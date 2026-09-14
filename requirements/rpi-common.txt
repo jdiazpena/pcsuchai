@@ -1,8 +1,9 @@
 # Versions that affect benchmark interpretation are deliberately explicit.
 # NumPy 2.5.2 and ApexPy 2.1.1 are proven on the Raspberry Pi 5 reference.
+# Astropy 7.2.2 includes the fix for NumPy >=2.4 removing numpy.in1d.
 numpy==2.5.2
 matplotlib==3.10.5
-astropy==7.1.0
+astropy==7.2.2
 sgp4==2.27
 skyfield==1.55
 aacgmv2==2.7.0

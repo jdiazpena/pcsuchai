@@ -110,6 +110,14 @@ still print warnings about unrelated pre-existing packages; those warnings
 are not an installation failure unless a SUCHAI dependency is affected. Old
 installation reports, results, user packages and cached wheels are retained.
 
+The Astropy pin is `7.2.2`: Astropy `7.1.x` references `numpy.in1d`, removed
+in NumPy `2.4`. The NumPy `2.5.2` and ApexPy `2.1.1` reference versions are
+unchanged. Installation and preflight import `astropy.units`, coordinates,
+time and IERS, plus `skyfield.api` and `sgp4.api`, rather than only importing
+their top-level packages. This catches runtime incompatibilities before a
+measured analysis starts. The upstream Astropy fix is visible in its
+[quantity helper implementation](https://github.com/astropy/astropy/blob/v7.2.2/astropy/units/quantity_helper/function_helpers.py).
+
 If the Debian prerequisites are already installed:
 
 ```bash
