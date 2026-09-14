@@ -5,10 +5,9 @@ post-processing pipeline as documented, testable Python code. The disorganized
 `archive/` directory is read-only reference material and is not imported by the
 new package.
 
-The original SUCHAI telemetry is private and is not distributed by this
-repository or its release bundles. Place an authorized local copy at
-`data/raw/langmuir-2018-2.csv`; Git ignores that file. The public input manifest
-keeps its checksum so authorized installations can verify the exact dataset.
+The canonical input `data/raw/langmuir-2018-2.csv` is included in Git and
+release bundles. The input manifest verifies its exact bytes. `archive/`
+and generated benchmark outputs remain excluded from Git.
 
 The first working slice loads only trusted instrument products, assigns the
 nearest historical TLE (including a later TLE when it is closer), propagates the
@@ -64,10 +63,19 @@ Use `scripts/run_full_products.sh` to benchmark every archive-parity image,
 `scripts/run_endurance.sh` for resumable multi-day campaigns. Benchmark storage
 is UTC-ordered by device/year/month/day/session; every execution retains its
 timestamped products, run record, and telemetry. Nothing is automatically
-deleted. Installation,
+discarded. Raw stage samples and campaign input snapshots use verified gzip;
+trusted numeric arrays and full plot selections use lossless compressed NPZ.
+Byte-identical repeated products share disk storage through SHA-256 hard links
+without removing their per-run paths. Installation,
 experiment controls, artifact layout, and metric definitions are documented in
 `docs/install/raspberry-pi.md`, `docs/running-benchmarks.md`, and
 `docs/benchmark-metrics.md`.
+
+After the quick acceptance check, launch a one-day campaign that survives
+closing SSH with `python3 scripts/run_detached.py pi5 24 "active cooler"`.
+Use `48` for two days. The launcher prints a persistent log path; low-space
+or thermal stops preserve earlier results. Storage and raw-data reading/export
+are documented in `docs/raw-data-retention.md`.
 
 Official campaigns first execute `scripts/run_full_validation.sh` semantics and
 require a certificate matching the exact source, inputs, interpreter,
@@ -89,10 +97,10 @@ study, modify, and redistribute them under that license, but distributed
 derivative software must preserve the notices, provide corresponding source,
 and remain under the GPL. See `LICENSE` and `COPYRIGHT`.
 
-The GPL grant does not relicense private SUCHAI telemetry or third-party
+The GPL grant does not relicense SUCHAI telemetry or third-party
 scientific datasets. Files under `data/` retain their providers' terms unless a
-file explicitly states otherwise. The original SUCHAI measurement CSV is not
-distributed at all.
+file explicitly states otherwise. Including an input does not change its
+data-provider terms.
 
 Academic users should cite the project using `CITATION.cff`. Citation metadata
 supports research credit but does not replace the license conditions.

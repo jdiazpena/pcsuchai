@@ -7,7 +7,7 @@
   "orbit_backends": ["astropy", "skyfield"],
   "magnetic_backends": ["aacgmv2", "apexpy"],
   "repeats": null,
-  "duration_hours": 72,
+  "duration_hours": 24,
   "warmups": 1,
   "limit": null,
   "plot_config": "configs/plots/archive-full.json",

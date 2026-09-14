@@ -42,6 +42,8 @@ def _fake_child(command: list[str], *_args, **_kwargs) -> tuple[dict, float, str
         "magnetic_positions_csv": "magnetic.csv",
         "magnetic_particle_map_png": "magnetic.png",
         "footpoint_particle_map_png": "footpoint.png",
+        "raw_products_npz": "raw-products.npz",
+        "raw_benchmark_samples": "benchmark.samples.csv.gz",
     }
     result = {}
     for role, name in names.items():
@@ -57,6 +59,7 @@ def _fake_child(command: list[str], *_args, **_kwargs) -> tuple[dict, float, str
             path.write_bytes(b"stable scientific product\n")
         result[role] = str(path)
     result["configured_plot_files"] = []
+    result["plot_selection_files"] = []
     return result, 0.01, ""
 
 
@@ -79,12 +82,18 @@ def test_every_run_has_timestamped_durable_directory_and_telemetry(tmp_path: Pat
     assert len(run_directories) == 2
     assert all(directory.name.endswith("-astropy-aacgmv2") for directory in run_directories)
     assert all((directory / "run-record.json").is_file() for directory in run_directories)
-    assert all((directory / "system-telemetry.csv").is_file() for directory in run_directories)
+    assert all((directory / "system-telemetry.csv.gz").is_file() for directory in run_directories)
     assert all((directory / "products").is_dir() for directory in run_directories)
     assert (tmp_path / "benchmark" / "campaign-events.jsonl").is_file()
-    assert (tmp_path / "benchmark" / "system-telemetry.csv").is_file()
+    assert list((tmp_path / "benchmark").glob("system-telemetry.*.csv.gz"))
     assert (tmp_path / "benchmark" / "heartbeat.json").is_file()
     assert result["settings"]["artifact_retention"] == "all"
+    assert result["input_snapshots"]["measurements"]["path"].endswith(".gz")
+    assert (tmp_path / "benchmark" / "source-snapshot.tar.gz").is_file()
+    assert all("record_path" in ref for ref in result["scenarios"]["astropy-aacgmv2"]["runs"])
+    first, second = [directory / "products/positions.csv" for directory in run_directories]
+    assert first.stat().st_ino == second.stat().st_ino
+    assert suite._load_run(result["scenarios"]["astropy-aacgmv2"]["runs"][1])["storage"]["shared_files"] > 0
 
 
 def test_duration_mode_finishes_complete_rounds_and_minimum_two(tmp_path: Path, monkeypatch) -> None:

@@ -12,7 +12,6 @@ tar -czf "$ARCHIVE" \
   --exclude='./.git' --exclude='./.pcsuchai-git' \
   --exclude='./.agents' --exclude='./.codex' \
   --exclude='./archive' --exclude='./outputs' --exclude='./dist' \
-  --exclude='./data/raw/*.csv' \
   --exclude='./.pytest_cache' --exclude='*/__pycache__' --exclude='*.pyc' \
   .
 sha256sum "$ARCHIVE" > "$ARCHIVE.sha256"

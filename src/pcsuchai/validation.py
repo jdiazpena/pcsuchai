@@ -342,7 +342,9 @@ def validate_orbit_backends(
     benchmark_output.parent.mkdir(parents=True, exist_ok=True)
     differences_output.parent.mkdir(parents=True, exist_ok=True)
     plots_output = Path(plots_output_dir) if plots_output_dir else output.with_name("orbit-validation-plots")
-    recorder = BenchmarkRecorder(enabled=True)
+    recorder = BenchmarkRecorder(
+        enabled=True, sample_path=benchmark_output.with_suffix(".samples.csv")
+    )
     with recorder.measure("propagate_orbit_astropy"):
         astropy_result = propagate("astropy", measurements.times, records, selection, eop_path)
     with recorder.measure("propagate_orbit_skyfield"):
@@ -390,6 +392,8 @@ def validate_orbit_backends(
     )
     write_comparison(output_path, comparison)
     recorder.write_json(benchmark_output)
+    comparison["raw_benchmark_samples"] = str(recorder.raw_sample_path)
+    write_comparison(output_path, comparison)
     return comparison
 
 
@@ -418,7 +422,9 @@ def validate_magnetic_backends(
         else output.with_name("magnetic-differences.csv")
     )
     differences_output.parent.mkdir(parents=True, exist_ok=True)
-    recorder = BenchmarkRecorder(enabled=True)
+    recorder = BenchmarkRecorder(
+        enabled=True, sample_path=benchmark_output.with_suffix(".samples.csv")
+    )
     with recorder.measure("convert_magnetic_aacgmv2"):
         aacgm = convert_magnetic("aacgmv2", measurements.times, orbit)
     with recorder.measure("convert_magnetic_apexpy"):
@@ -449,4 +455,6 @@ def validate_magnetic_backends(
     _write_magnetic_differences(differences_output, measurements, orbit, aacgm, apex)
     write_comparison(output_path, comparison)
     recorder.write_json(benchmark_output)
+    comparison["raw_benchmark_samples"] = str(recorder.raw_sample_path)
+    write_comparison(output_path, comparison)
     return comparison

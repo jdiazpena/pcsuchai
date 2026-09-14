@@ -16,8 +16,10 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from statistics import mean, median, pstdev
+from array import array
 
-from .benchmark import _temperature_c, runtime_metadata, sha256_file, system_snapshot
+from .benchmark import _temperature_c, _throttled, runtime_metadata, sha256_file, system_snapshot
+from .retention import compress_retained_file, deduplicate_products, snapshot_inputs, snapshot_sources
 
 
 def _utc_now() -> datetime:
@@ -66,6 +68,7 @@ def _telemetry_snapshot(storage_path: Path) -> dict:
     snapshot = {
         "captured_utc": _utc_text(),
         "temperature_c": _temperature_c(),
+        "throttled": _throttled(),
         "load_1m": os.getloadavg()[0] if hasattr(os, "getloadavg") else None,
         "disk_free_bytes": shutil.disk_usage(storage_path).free,
     }
@@ -96,14 +99,20 @@ class _TelemetryJournal:
     fields = (
         "captured_utc", "campaign_elapsed_seconds", "run_id", "run_directory", "scenario", "phase",
         "temperature_c", "cpu_frequency_mhz", "cpu_percent", "available_memory_bytes",
-        "used_memory_bytes", "swap_used_bytes", "load_1m", "disk_free_bytes",
+        "used_memory_bytes", "swap_used_bytes", "load_1m", "disk_free_bytes", "throttled", "segment_id",
     )
 
-    def __init__(self, path: Path, storage_path: Path, interval_seconds: float) -> None:
+    def __init__(
+        self, path: Path, storage_path: Path, interval_seconds: float,
+        elapsed_offset: float = 0.0,
+    ) -> None:
         self.path = path
         self.storage_path = storage_path
         self.interval_seconds = interval_seconds
         self.started = time.monotonic()
+        self.elapsed_offset = elapsed_offset
+        self.segment_id = _utc_path_stamp()
+        self.error: Exception | None = None
         self.stop_event = threading.Event()
         self.lock = threading.Lock()
         self.write_lock = threading.Lock()
@@ -116,7 +125,7 @@ class _TelemetryJournal:
     ) -> None:
         """Label future samples with the active workload."""
 
-        with self.lock:
+        with self.write_lock, self.lock:
             self.context = {
                 "run_id": run_id, "run_directory": str(run_directory) if run_directory else None,
                 "scenario": scenario, "phase": phase,
@@ -125,10 +134,11 @@ class _TelemetryJournal:
     def sample(self) -> dict:
         """Append one sample immediately and return it for safety checks."""
 
+        if self.error is not None:
+            raise RuntimeError("raw system telemetry persistence failed") from self.error
         record = _telemetry_snapshot(self.storage_path)
-        with self.lock:
-            record.update(self.context)
-        record["campaign_elapsed_seconds"] = time.monotonic() - self.started
+        record["campaign_elapsed_seconds"] = self.elapsed_offset + time.monotonic() - self.started
+        record["segment_id"] = self.segment_id
         def append(path: Path) -> None:
             exists = path.exists() and path.stat().st_size > 0
             with path.open("a", encoding="utf-8", newline="") as handle:
@@ -139,6 +149,8 @@ class _TelemetryJournal:
                 handle.flush()
                 os.fsync(handle.fileno())
         with self.write_lock:
+            with self.lock:
+                record.update(self.context)
             append(self.path)
             if record.get("run_directory"):
                 append(Path(str(record["run_directory"])) / "system-telemetry.csv")
@@ -152,7 +164,12 @@ class _TelemetryJournal:
 
         def loop() -> None:
             while not self.stop_event.wait(self.interval_seconds):
-                self.sample()
+                try:
+                    self.sample()
+                except Exception as exc:
+                    self.error = exc
+                    self.stop_event.set()
+                    break
 
         self.thread = threading.Thread(target=loop, name="pcsuchai-telemetry", daemon=True)
         self.thread.start()
@@ -162,7 +179,7 @@ class _TelemetryJournal:
 
         self.stop_event.set()
         if self.thread is not None:
-            self.thread.join(timeout=max(1.0, self.interval_seconds * 2))
+            self.thread.join()
         self.sample()
 
 
@@ -303,21 +320,56 @@ def _run_child(
     """Run one clean process and parse its JSON result."""
 
     started = time.perf_counter()
-    result = subprocess.run(
-        command, capture_output=True, text=True, timeout=timeout_seconds, check=False,
-        env=environment,
-    )
+    output_dir = Path(command[command.index("--output-dir") + 1])
+    log_dir = output_dir.parent
+    log_dir.mkdir(parents=True, exist_ok=True)
+    stdout_path, stderr_path = log_dir / "stdout.log", log_dir / "stderr.log"
+    with stdout_path.open("xb") as stdout, stderr_path.open("xb") as stderr:
+        try:
+            result = subprocess.run(
+                command, stdout=stdout, stderr=stderr, timeout=timeout_seconds,
+                check=False, env=environment,
+            )
+        finally:
+            stdout.flush()
+            stderr.flush()
+            os.fsync(stdout.fileno())
+            os.fsync(stderr.fileno())
+    stdout_text = stdout_path.read_text(encoding="utf-8", errors="replace")
+    stderr_text = stderr_path.read_text(encoding="utf-8", errors="replace")
     elapsed = time.perf_counter() - started
     if result.returncode != 0:
         raise RuntimeError(
             f"benchmark child failed ({result.returncode}): {' '.join(command)}\n"
-            f"stdout:\n{result.stdout[-2000:]}\nstderr:\n{result.stderr[-4000:]}"
+            f"complete logs: {stdout_path}, {stderr_path}\n"
+            f"stdout:\n{stdout_text[-2000:]}\nstderr:\n{stderr_text[-4000:]}"
         )
     try:
-        outputs = json.loads(result.stdout)
+        outputs = json.loads(stdout_text)
     except json.JSONDecodeError as exc:
-        raise RuntimeError(f"benchmark child returned invalid JSON: {result.stdout[-4000:]}") from exc
-    return outputs, elapsed, result.stderr
+        raise RuntimeError(f"benchmark child returned invalid JSON; see {stdout_path}") from exc
+    return outputs, elapsed, stderr_text
+
+
+def _retain_run(run_dir: Path, destination: Path) -> dict:
+    """Compress closed raw journals/logs and losslessly deduplicate products."""
+
+    started = time.perf_counter()
+    compressed = []
+    for path in (run_dir / "stdout.log", run_dir / "stderr.log", run_dir / "system-telemetry.csv"):
+        if path.is_file():
+            compressed.append(str(compress_retained_file(path, remove_original=True)))
+    products = run_dir / "products"
+    # Failed/interrupted children may leave a plain, partial raw sample journal.
+    if products.is_dir():
+        for path in products.glob("*.samples.csv"):
+            if not path.with_name(path.name + ".gz").exists():
+                compressed.append(str(compress_retained_file(path, remove_original=True)))
+    storage = deduplicate_products(products, destination / "artifact-store")
+    return {
+        **storage, "compressed_raw_files": compressed,
+        "retention_wall_seconds": time.perf_counter() - started,
+    }
 
 
 def _validate_run(outputs: dict, external_wall_seconds: float) -> dict:
@@ -326,6 +378,7 @@ def _validate_run(outputs: dict, external_wall_seconds: float) -> dict:
     required = (
         "positions_csv", "particle_map_png", "manifest_json", "benchmark_json",
         "magnetic_positions_csv", "magnetic_particle_map_png", "footpoint_particle_map_png",
+        "raw_products_npz", "raw_benchmark_samples",
     )
     missing = [name for name in required if not outputs.get(name) or not Path(outputs[name]).is_file()]
     if missing:
@@ -336,6 +389,9 @@ def _validate_run(outputs: dict, external_wall_seconds: float) -> dict:
     stages = json.loads(Path(outputs["benchmark_json"]).read_text())
     artifacts = {name: _artifact_record(outputs[name]) for name in required}
     configured = [_artifact_record(path) for path in outputs.get("configured_plot_files", [])]
+    selections = [_artifact_record(path) for path in outputs.get("plot_selection_files", [])]
+    if len(selections) != len(configured):
+        raise RuntimeError("each configured plot must retain its complete raw selection")
     return {
         "external_wall_seconds": external_wall_seconds,
         "observations": manifest["observations"],
@@ -343,16 +399,24 @@ def _validate_run(outputs: dict, external_wall_seconds: float) -> dict:
         "valid_magnetic_positions": manifest["valid_magnetic_positions"],
         "artifacts": artifacts,
         "configured_plot_artifacts": configured,
+        "plot_selection_artifacts": selections,
         "output_bytes": sum(item["size_bytes"] for item in artifacts.values())
-        + sum(item["size_bytes"] for item in configured),
+        + sum(item["size_bytes"] for item in configured + selections),
         "stages": stages,
     }
+
+
+def _load_run(record: dict) -> dict:
+    """Read a complete per-run record without keeping it in campaign RAM."""
+
+    if "record_path" in record:
+        return json.loads(Path(record["record_path"]).read_text(encoding="utf-8"))
+    return record  # Backward compatibility for existing, full-record sessions.
 
 
 def _summarize_runs(runs: list[dict]) -> dict:
     """Aggregate whole-process and per-stage measurements across repeats."""
 
-    stage_names = sorted({stage["stage"] for run in runs for stage in run["stages"]})
     stage_fields = (
         "wall_seconds", "process_cpu_seconds", "process_user_seconds",
         "process_system_seconds", "peak_rss_bytes", "read_bytes", "write_bytes",
@@ -363,20 +427,24 @@ def _summarize_runs(runs: list[dict]) -> dict:
         "available_memory_end_bytes", "temperature_start_c", "temperature_max_c",
         "temperature_end_c", "cpu_frequency_min_mhz", "cpu_frequency_max_mhz",
     )
-    stage_summary = {}
-    for stage_name in stage_names:
-        rows = [
-            next(stage for stage in run["stages"] if stage["stage"] == stage_name)
-            for run in runs
-        ]
-        stage_summary[stage_name] = {
-            field: _statistics([float(row[field]) for row in rows if row[field] is not None])
-            for field in stage_fields
-            if any(row[field] is not None for row in rows)
-        }
+    values: dict[str, dict[str, array]] = {}
+    wall_values, output_values = array("d"), array("d")
+    for reference in runs:
+        run = _load_run(reference)
+        wall_values.append(run["external_wall_seconds"])
+        output_values.append(run["output_bytes"])
+        for stage in run["stages"]:
+            metrics = values.setdefault(stage["stage"], {})
+            for field in stage_fields:
+                if stage.get(field) is not None:
+                    metrics.setdefault(field, array("d")).append(float(stage[field]))
+    stage_summary = {
+        name: {field: _statistics(samples) for field, samples in metrics.items()}
+        for name, metrics in sorted(values.items())
+    }
     return {
-        "external_wall_seconds": _statistics([run["external_wall_seconds"] for run in runs]),
-        "output_bytes": _statistics([float(run["output_bytes"]) for run in runs]),
+        "external_wall_seconds": _statistics(wall_values),
+        "output_bytes": _statistics(output_values),
         "stages": stage_summary,
     }
 
@@ -386,8 +454,12 @@ def _check_repeat_consistency(runs: list[dict]) -> dict:
 
     roles = ("positions_csv", "magnetic_positions_csv")
     result = {}
-    for role in roles:
-        hashes = [run["artifacts"][role]["sha256"] for run in runs]
+    role_hashes = {role: [] for role in roles}
+    for reference in runs:
+        run = _load_run(reference)
+        for role in roles:
+            role_hashes[role].append(run["artifacts"][role]["sha256"])
+    for role, hashes in role_hashes.items():
         result[role] = {"consistent": len(set(hashes)) == 1, "sha256": hashes}
     result["all_consistent"] = all(item["consistent"] for item in result.values())
     return result
@@ -409,7 +481,8 @@ def _write_csv_reports(session: dict, destination: Path) -> dict[str, str]:
         writer = csv.DictWriter(handle, fieldnames=columns)
         writer.writeheader()
         for scenario, report in session["scenarios"].items():
-            for run in report["runs"]:
+            for reference in report["runs"]:
+                run = _load_run(reference)
                 before, after = run["system_before"], run["system_after"]
                 writer.writerow({
                     "run_id": run.get("run_id"),
@@ -450,7 +523,8 @@ def _write_csv_reports(session: dict, destination: Path) -> dict[str, str]:
         ))
         writer.writeheader()
         for scenario, report in session["scenarios"].items():
-            for run in report["runs"]:
+            for reference in report["runs"]:
+                run = _load_run(reference)
                 for stage in run["stages"]:
                     writer.writerow({
                         "run_id": run.get("run_id"),
@@ -497,16 +571,28 @@ def _perf_run(
         executable, "stat", "-x", ";", "-o", str(perf_path), "-e",
         "cycles,instructions,task-clock,context-switches,page-faults", "--", *command,
     ]
-    result = subprocess.run(
-        perf_command, capture_output=True, text=True, timeout=timeout_seconds,
-        check=False, env=environment,
-    )
+    stdout_path, stderr_path = perf_path.with_suffix(".stdout.log"), perf_path.with_suffix(".stderr.log")
+    with stdout_path.open("xb") as stdout, stderr_path.open("xb") as stderr:
+        try:
+            result = subprocess.run(
+                perf_command, stdout=stdout, stderr=stderr, timeout=timeout_seconds,
+                check=False, env=environment,
+            )
+        finally:
+            stdout.flush()
+            stderr.flush()
+            os.fsync(stdout.fileno())
+            os.fsync(stderr.fileno())
+    logs = {
+        "stdout": str(compress_retained_file(stdout_path, remove_original=True)),
+        "stderr": str(compress_retained_file(stderr_path, remove_original=True)),
+    }
     if result.returncode != 0:
         return {
-            "status": "unavailable", "reason": result.stderr[-2000:],
-            "return_code": result.returncode,
+            "status": "unavailable", "reason": f"perf failed; complete logs: {logs}",
+            "return_code": result.returncode, "logs": logs,
         }
-    return {"status": "available", "counters": parse_perf_stat(perf_path)}
+    return {"status": "available", "counters": parse_perf_stat(perf_path), "logs": logs}
 
 
 def run_benchmark_suite(
@@ -612,9 +698,11 @@ def run_benchmark_suite(
         "continue_on_error": continue_on_error,
         "max_consecutive_failures": max_consecutive_failures,
         "artifact_retention": "all",
+        "raw_compression": "verified_gzip_and_npz",
+        "product_storage": "lossless_sha256_hardlinks",
     }
     new_session = {
-        "schema_version": 2,
+        "schema_version": 3,
         "status": "running",
         "official": official,
         "workload_classification": "validated_full_code" if official else "diagnostic_non_official",
@@ -673,6 +761,11 @@ def run_benchmark_suite(
         session["status"] = "running"
     else:
         session = new_session
+        session["input_snapshots"] = snapshot_inputs(inputs, destination / "inputs")
+        session["source_snapshot"] = snapshot_sources(
+            resolved_root, current_source, destination / "source-snapshot.tar.gz"
+        )
+        _atomic_write_json(destination / "input-snapshots.json", session["input_snapshots"])
 
     def checkpoint() -> None:
         _atomic_write_json(checkpoint_path, session)
@@ -697,12 +790,13 @@ def run_benchmark_suite(
         return run_id, path
 
     def already_handled(kind: str, round_number: int, scenario: BenchmarkScenario) -> bool:
-        return any(
-            item.get("kind") == kind and item.get("round") == round_number
-            and item.get("scenario") == scenario.name
-            and item.get("status") in ("complete", "failed")
-            for item in session["execution_order"]
-        )
+        return (kind, round_number, scenario.name) in handled
+
+    handled = {
+        (item.get("kind"), item.get("round"), item.get("scenario"))
+        for item in session["execution_order"]
+        if item.get("status") in ("complete", "failed")
+    }
 
     def safety_reason(sample: dict) -> str | None:
         if sample["disk_free_bytes"] < minimum_free_bytes:
@@ -715,7 +809,8 @@ def run_benchmark_suite(
     checkpoint()
     log_event("campaign_resumed" if resume else "campaign_started", settings=current_settings)
     telemetry = _TelemetryJournal(
-        telemetry_path, destination, telemetry_interval_seconds
+        telemetry_path, destination, telemetry_interval_seconds,
+        elapsed_offset=float(session.get("active_elapsed_seconds", 0.0)),
     )
     telemetry.start()
     active_segment_started = time.monotonic()
@@ -748,16 +843,38 @@ def run_benchmark_suite(
                 scenario=scenario.name, phase="warmup",
             )
             log_event("run_started", run_id=run_id, phase="warmup", round=warmup_index, scenario=scenario.name)
-            _run_child(command, timeout_seconds, child_environment)
+            try:
+                outputs, elapsed, _stderr = _run_child(command, timeout_seconds, child_environment)
+                _validate_run(outputs, elapsed)
+            except BaseException as exc:
+                telemetry.sample()
+                telemetry.set_context(run_id=None, scenario=None, phase="idle")
+                failure = {
+                    "run_id": run_id, "kind": "warmup", "round": warmup_index,
+                    "scenario": scenario.name, "status": "failed", "started_utc": started_utc,
+                    "finished_utc": _utc_text(), "run_directory": str(run_dir),
+                    "command": command, "error_type": type(exc).__name__, "error": str(exc),
+                    "storage": _retain_run(run_dir, destination),
+                }
+                _atomic_write_json(run_dir / "run-record.json", failure)
+                session["failures"].append(failure)
+                session["execution_order"].append(failure)
+                session["status"] = "stopped"
+                checkpoint()
+                log_event("run_failed", **failure)
+                telemetry.stop()
+                raise
             finished_utc = _utc_text()
             record = {
                 "run_id": run_id, "kind": "warmup", "round": warmup_index,
                 "scenario": scenario.name, "status": "complete", "started_utc": started_utc,
                 "finished_utc": finished_utc, "run_directory": str(run_dir), "command": command,
             }
-            _atomic_write_json(run_dir / "run-record.json", record)
             telemetry.sample()
             telemetry.set_context(run_id=None, scenario=None, phase="idle")
+            record["storage"] = _retain_run(run_dir, destination)
+            _atomic_write_json(run_dir / "run-record.json", record)
+            log_event("run_completed", **record)
             print(
                 f"[warmup {warmup_index}/{warmups}] {scenario.name} complete",
                 file=sys.stderr, flush=True,
@@ -766,6 +883,7 @@ def run_benchmark_suite(
                 **record, "cooldown": {"status": "pending"},
             }
             session["execution_order"].append(execution)
+            handled.add(("warmup", warmup_index, scenario.name))
             checkpoint()
             execution["cooldown"] = _cooldown(cooldown_until_c, cooldown_seconds, cooldown_max_seconds)
             print(
@@ -811,13 +929,15 @@ def run_benchmark_suite(
             before = system_snapshot()
             operator_interrupted = False
             try:
-                outputs, elapsed, stderr = _run_child(command, timeout_seconds, child_environment)
+                outputs, elapsed, _stderr = _run_child(command, timeout_seconds, child_environment)
                 run = _validate_run(outputs, elapsed)
                 run.update({
                     "run_id": run_id, "status": "complete", "started_utc": started_utc,
                     "finished_utc": _utc_text(), "run_directory": str(run_dir),
                     "system_before": before, "system_after": system_snapshot(),
-                    "repeat": repeat_index, "command": command, "stderr": stderr,
+                    "repeat": repeat_index, "command": command,
+                    "stdout_log": str(run_dir / "stdout.log.gz"),
+                    "stderr_log": str(run_dir / "stderr.log.gz"),
                 })
                 scenario_runs[scenario.name].append(run)
                 record = run
@@ -842,9 +962,16 @@ def run_benchmark_suite(
                     "system_before": before, "system_after": system_snapshot(),
                 }
                 session["failures"].append(record)
-            _atomic_write_json(run_dir / "run-record.json", record)
             telemetry.sample()
             telemetry.set_context(run_id=None, scenario=None, phase="idle")
+            record["storage"] = _retain_run(run_dir, destination)
+            _atomic_write_json(run_dir / "run-record.json", record)
+            if record["status"] == "complete":
+                # Full data lives in the immutable record, not in a growing RAM
+                # copy and a repeatedly rewritten monolithic checkpoint.
+                scenario_runs[scenario.name][-1] = {
+                    "run_id": run_id, "record_path": str(run_dir / "run-record.json")
+                }
             completed = record["status"] == "complete"
             print(
                 f"[measured {repeat_index}/{repeats or 'duration'}] {scenario.name} "
@@ -858,6 +985,8 @@ def run_benchmark_suite(
                 "run_directory": str(run_dir), "cooldown": {"status": "pending"},
             }
             session["execution_order"].append(execution)
+            if record["status"] in ("complete", "failed"):
+                handled.add(("measured", repeat_index, scenario.name))
             session["active_elapsed_seconds"] = float(session.get("active_elapsed_seconds", 0.0)) + (time.monotonic() - active_segment_started)
             active_segment_started = time.monotonic()
             log_event(
@@ -925,6 +1054,12 @@ def run_benchmark_suite(
     session["finished_utc"] = _utc_text()
     telemetry.set_context(run_id=None, scenario=None, phase="finished")
     telemetry.stop()
+    # Give each active segment its own immutable compressed timeline. Resuming
+    # opens a new live CSV and never overwrites a previous segment's samples.
+    segment_path = telemetry_path.with_name(f"system-telemetry.{telemetry.segment_id}.csv")
+    telemetry_path.rename(segment_path)
+    compressed_timeline = compress_retained_file(segment_path, remove_original=True)
+    session.setdefault("system_telemetry_segments", []).append(_artifact_record(compressed_timeline))
     csv_reports = _write_csv_reports(session, destination)
     session["tabular_reports"] = {
         name: {**_artifact_record(path)} for name, path in csv_reports.items()

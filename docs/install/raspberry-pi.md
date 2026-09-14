@@ -20,7 +20,15 @@ The installer enforces this through separate directories such as
 
 ## Connected installation
 
-Transfer or clone the complete `pcsuchai` repository once, then run:
+Clone the repository, which now includes the canonical CSV, TLE and EOP data:
+
+```bash
+sudo apt update
+sudo apt install -y git
+git clone https://github.com/jdiazpena/pcsuchai.git
+```
+
+Then run:
 
 ```bash
 cd pcsuchai
@@ -36,7 +44,7 @@ scripts/create_release_bundle.sh
 ```
 
 This writes `dist/pcsuchai-<version>.tar.gz` and a matching `.sha256` file. It
-includes code, documentation, trusted data, configuration, and compatible
+includes code, documentation, the canonical measurement CSV, TLE/EOP inputs, configuration, and compatible
 cached wheels while excluding the read-only archive, old outputs, Git metadata,
 and caches.
 
@@ -96,6 +104,22 @@ The installation is accepted only after the quick campaign completes. Its
 The installer itself is deliberately tested on each Pi as dependency work.
 Scientific source code is not edited or debugged on a Pi. Any scientific or
 pipeline failure is reproduced and fixed on the local development PC first.
+
+After the quick acceptance check, launch a disconnect-safe 24-hour campaign:
+
+```bash
+python3 scripts/run_detached.py pi5 24 "active cooler, case open"
+```
+
+Use `48` instead of `24` for two days. The launcher prints a log path and PID;
+follow that log to see preflight, full validation, the campaign directory and
+progress. Closing SSH does not stop it. A failed preflight stops before
+measurement. The existing 2 GB free-space guard may end a campaign before its
+requested duration; it never deletes earlier results.
+
+Raw samples and input snapshots are losslessly compressed, and identical
+repeated products share backing storage on the normal Linux filesystem. See
+`docs/raw-data-retention.md` for reading, exporting and preserving these data.
 
 ## Updating dependencies
 

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import csv
 import json
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass, fields
 from pathlib import Path
 
 import numpy as np
@@ -39,6 +39,55 @@ class AnalysisOutputs:
     magnetic_particle_map_png: str | None
     footpoint_particle_map_png: str | None
     configured_plot_files: tuple[str, ...]
+    raw_products_npz: str | None = None
+    raw_benchmark_samples: str | None = None
+    plot_selection_files: tuple[str, ...] = ()
+
+
+def _write_raw_products(path, measurements, selection, orbit, magnetic, threshold) -> None:
+    """Losslessly retain every trusted observation and every derived numeric array.
+
+    Arrays keep their native dtype, row order, duplicates, NaN and infinity.
+    Unicode timestamps/headers avoid pickle. Input snapshots retain exact source
+    bytes once per campaign; this NPZ describes the arrays actually processed.
+    """
+
+    arrays = {}
+    for prefix, result in (("measurement", measurements), ("tle_selection", selection),
+                           ("orbit", orbit), ("magnetic", magnetic)):
+        if result is None:
+            continue
+        for field in fields(result):
+            value = getattr(result, field.name)
+            if field.name == "times":
+                value = [time.isoformat() for time in value]
+            arrays[f"{prefix}_{field.name}"] = np.asarray(value)
+    particles = measurements.particle_counts
+    arrays["particle_threshold"] = np.asarray(threshold)
+    arrays["geographic_particle_map_mask"] = (
+        np.isfinite(orbit.latitude_deg)
+        & np.isfinite(orbit.longitude_deg) & np.isfinite(particles) & (particles >= threshold)
+    )
+    if magnetic is not None:
+        base = (magnetic.error_codes == 0) & np.isfinite(particles) & (particles >= threshold)
+        arrays["magnetic_particle_map_mask"] = (
+            base & np.isfinite(magnetic.latitude_deg) & np.isfinite(magnetic.longitude_deg)
+        )
+        arrays["footpoint_particle_map_mask"] = (
+            base & np.isfinite(magnetic.surface_latitude_deg)
+            & np.isfinite(magnetic.surface_longitude_deg)
+        )
+    np.savez_compressed(path, **arrays)
+
+
+def _write_plot_selection(path, selected) -> None:
+    """Save the full selection mask and unrounded values used by one plot."""
+
+    np.savez_compressed(
+        path, mask=selected.mask, x=selected.x, y=selected.y, values=selected.values,
+        x_label=selected.x_label, y_label=selected.y_label,
+        value_label=selected.value_label, scale=selected.scale,
+    )
 
 
 def _write_positions(path, measurements, records, selection, orbit) -> None:
@@ -98,7 +147,12 @@ def run_analysis(
 
     destination = Path(output_dir)
     destination.mkdir(parents=True, exist_ok=True)
-    recorder = BenchmarkRecorder(benchmark)
+    run_label = (
+        f"{orbit_backend}-{magnetic_backend}" if magnetic_backend != "none" else orbit_backend
+    )
+    recorder = BenchmarkRecorder(
+        benchmark, sample_path=destination / f"benchmark-{run_label}.samples.csv"
+    )
 
     with recorder.measure("load_measurements"):
         measurements = load_measurements(measurement_path).first(limit)
@@ -112,9 +166,9 @@ def run_analysis(
     if magnetic_backend != "none":
         with recorder.measure("convert_magnetic_coordinates"):
             magnetic = convert_magnetic(magnetic_backend, measurements.times, orbit)
-    run_label = (
-        f"{orbit_backend}-{magnetic_backend}" if magnetic_backend != "none" else orbit_backend
-    )
+    raw_products_path = destination / f"raw-products-{run_label}.npz"
+    with recorder.measure("write_raw_scientific_products"):
+        _write_raw_products(raw_products_path, measurements, selection, orbit, magnetic, particle_threshold)
     positions_path = destination / f"positions-{run_label}.csv"
     with recorder.measure("write_positions"):
         _write_positions(positions_path, measurements, records, selection, orbit)
@@ -148,10 +202,14 @@ def run_analysis(
 
     configured_plot_metadata = []
     configured_plot_files = []
+    plot_selection_files = []
     for spec in plot_specs:
         configured_path = destination / f"{spec.name}.png"
         with recorder.measure(f"render_configured_plot:{spec.name}"):
             selected = select_plot_data(spec, measurements, orbit, magnetic)
+            selection_path = destination / f"{spec.name}.selection.npz"
+            _write_plot_selection(selection_path, selected)
+            plot_selection_files.append(str(selection_path))
             if spec.plot_type == "time_availability":
                 metadata = plot_time_availability(
                     spec, selected, measurements.times, configured_path
@@ -189,10 +247,14 @@ def run_analysis(
             "eop": str(eop_path), "plot_config": str(plot_config_path),
         },
         "runtime": runtime_metadata(),
+        "raw_products_npz": str(raw_products_path),
+        "plot_selection_files": plot_selection_files,
+        "raw_data_retention": "lossless; all source rows and full plot masks preserved",
     }
-    manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
     if benchmark_path is not None:
         recorder.write_json(benchmark_path)
+    manifest["raw_benchmark_samples"] = str(recorder.raw_sample_path) if recorder.raw_sample_path else None
+    manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
     return AnalysisOutputs(
         len(measurements), valid_positions, str(positions_path), str(map_path), str(manifest_path),
         str(benchmark_path) if benchmark_path else None,
@@ -200,4 +262,7 @@ def run_analysis(
         str(magnetic_map_path) if magnetic_map_path else None,
         str(footpoint_map_path) if footpoint_map_path else None,
         tuple(configured_plot_files),
+        str(raw_products_path),
+        str(recorder.raw_sample_path) if recorder.raw_sample_path else None,
+        tuple(plot_selection_files),
     )

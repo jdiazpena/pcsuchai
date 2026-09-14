@@ -59,6 +59,11 @@ def main() -> int:
             (session_dir / "benchmark" / "benchmark-session.checkpoint.json").read_text(encoding="utf-8")
         )
         label = _safe_label(checkpoint["device_label"])
+        # Older launchers saved the original profile, not effective overrides.
+        if checkpoint.get("settings", {}).get("duration_seconds") is not None:
+            config["duration_hours"] = checkpoint["settings"]["duration_seconds"] / 3600.0
+        if arguments.notes is None:
+            arguments.notes = checkpoint.get("notes")
         if arguments.device_label is not None and _safe_label(arguments.device_label) != label:
             raise SystemExit("resume device label does not match the checkpoint")
     else:
@@ -66,6 +71,8 @@ def main() -> int:
             parser.error("--config and --device-label are required for a new campaign")
         config_path = (root / arguments.config).resolve() if not arguments.config.is_absolute() else arguments.config
         config = json.loads(config_path.read_text(encoding="utf-8"))
+        if arguments.duration_hours is not None:
+            config["duration_hours"] = arguments.duration_hours
         label = _safe_label(arguments.device_label)
         now = datetime.now(timezone.utc)
         session_dir = (
@@ -75,6 +82,7 @@ def main() -> int:
         session_dir.mkdir(parents=True, exist_ok=False)
         (session_dir / "campaign-config.json").write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
 
+    print(f"SESSION: {session_dir}", flush=True)
     env = os.environ.copy()
     env["PYTHONPATH"] = str(root / "src") + (os.pathsep + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
     python = sys.executable

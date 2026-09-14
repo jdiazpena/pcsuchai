@@ -4,11 +4,11 @@ Copyright (C) 2026 Joaquín Díaz
 The software source code and original project documentation in this repository
 are licensed under GPL-3.0-or-later. See LICENSE for the complete terms.
 
-This license grant does not claim ownership of, or relicense, private SUCHAI
+This license grant does not claim ownership of, or relicense, SUCHAI
 telemetry or third-party scientific datasets. Files under data/ retain their
 providers' applicable terms unless a file explicitly states otherwise. The
-private data/raw/langmuir-2018-2.csv file is excluded from Git and release
-bundles.
+canonical data/raw/langmuir-2018-2.csv file is included in Git and release
+bundles; its inclusion does not change the data-provider terms.
 
 Bundled Natural Earth-derived map geometry is public-domain source material;
 its provenance is recorded in src/pcsuchai/assets/README.md.

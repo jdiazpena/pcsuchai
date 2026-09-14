@@ -27,7 +27,8 @@ artificially cheaper.
 | Controlled comparison | `scripts/run_comparison.sh pi5` | Full data, 1 warm-up + 5 measured repeats, randomized order, thermal baseline |
 | Complete image workload | `scripts/run_full_products.sh pi5` | Full data and all archive-parity plots, 3 measured repeats |
 | Thermal/memory stability | `scripts/run_stability.sh pi5` | Full data, 20 measured repeats per backend combination, no cooldown |
-| Multi-day endurance | `scripts/run_endurance.sh pi5 72 "case open"` | Full workload continuously for at least 72 active hours, finishing the current four-scenario round |
+| One-/two-day endurance | `scripts/run_endurance.sh pi5 24 "case open"` | Full workload for 24 active hours (use 48 for two days), finishing the current four-scenario round |
+| Disconnect-safe endurance | `python3 scripts/run_detached.py pi5 24 "case open"` | The same campaign, detached from SSH, with a persistent launch log |
 
 The three official profiles automatically run and bind a full-code validation
 certificate before measurement. They all execute the complete 32-plot profile.
@@ -73,7 +74,8 @@ label or notes.
    campaign and supports exact-workload resume.
 8. Appends and flushes timestamped events and system telemetry while the
    campaign is running.
-9. Writes complete JSON plus flat CSV reports.
+9. Writes complete per-run JSON plus flat CSV reports and summary JSON. Compact
+   checkpoint/session entries reference complete run records on disk.
 10. Never deletes benchmark products. A free-space guard stops the campaign
     before the SD card is filled.
 
@@ -93,6 +95,11 @@ outputs/benchmarks/<device>/<YYYY>/<MM>/<DD>/<UTC>-<profile>/
     ├── campaign-events.jsonl
     ├── heartbeat.json
     ├── system-telemetry.csv
+    ├── system-telemetry.<segment-UTC>.csv.gz
+    ├── inputs/
+    ├── input-snapshots.json
+    ├── source-snapshot.tar.gz
+    ├── artifact-store/
     ├── run-timeseries.csv
     ├── stage-timeseries.csv
     ├── scenario-summary.csv
@@ -101,8 +108,14 @@ outputs/benchmarks/<device>/<YYYY>/<MM>/<DD>/<UTC>-<profile>/
     │   └── YYYY-MM-DD/
     │       └── <UTC>-r<round>-<orbit>-<magnetic>/
     │           ├── run-record.json
-    │           ├── system-telemetry.csv
+    │           ├── system-telemetry.csv.gz
+    │           ├── stdout.log.gz
+    │           ├── stderr.log.gz
     │           └── products/
+    │               ├── raw-products-<backends>.npz
+    │               ├── benchmark-<backends>.samples.csv.gz
+    │               ├── <plot>.selection.npz
+    │               └── CSVs, PNGs, benchmark summaries and manifest
     └── perf/
 ```
 
@@ -113,24 +126,28 @@ loading, TLE selection, orbit propagation, magnetic conversion, CSV writing,
 and each plot. `scenario-summary.csv` contains mean, median, population
 standard deviation, minimum, maximum, and interpolated 95th percentile.
 
-`system-telemetry.csv` is the continuous UTC timeline. By default it is flushed
+`system-telemetry.csv` is the live continuous UTC timeline. By default it is flushed
 every two seconds and records the active run identifier, phase, SoC
 temperature, CPU frequency and utilization, available/used memory, swap, load,
-and free storage. The matching per-run telemetry file is stored beside that
-run's products. `heartbeat.json` always contains the newest complete sample.
+free storage and firmware throttling flags. Closed run timelines and closed
+campaign segments are verified and gzip-compressed; no samples are discarded.
+The matching per-run telemetry file is stored beside that run's products.
+`heartbeat.json` always contains the newest complete sample.
 `campaign-events.jsonl` is append-only and records starts, completions, failures,
 resumes, and the final stop reason.
 
 Every run identifier begins with a microsecond-resolution UTC timestamp. No
-run-directory cleanup, rotation, overwrite, or automatic artifact deletion is
-implemented. Failed and interrupted run directories are evidence and must also
+run-directory cleanup or pruning is implemented. Lossless compression replaces
+closed plain raw journals only after verifying their decompressed checksum;
+byte-identical completed products share storage without changing their paths.
+Failed and interrupted run directories are evidence and must also
 be retained. Only the atomic checkpoint and current heartbeat replace their
 own previous versions; the append-only event and telemetry journals preserve
 the history.
 
 ## Multi-day endurance operation
 
-Run the declared three-day profile with:
+Run the declared one-day profile with:
 
 ```bash
 scripts/run_endurance.sh pi5
@@ -139,7 +156,7 @@ scripts/run_endurance.sh pi5
 Override the duration in hours without editing the profile:
 
 ```bash
-scripts/run_endurance.sh pi5 120 "five-day run, active cooler"
+scripts/run_endurance.sh pi5 48 "two-day run, active cooler"
 ```
 
 Duration is measured as active campaign time and checked between complete
@@ -152,6 +169,24 @@ The endurance profile has no cooldown, keeps every generated product, samples
 system telemetry every two seconds, stops at 80 °C between executions, stops
 with 2 GB free storage remaining, records individual failures, and stops after
 three consecutive failures. These stops do not delete or overwrite anything.
+
+For a campaign that survives closing SSH, use:
+
+```bash
+python3 scripts/run_detached.py pi5 24 "active cooler, case open"
+```
+
+The launcher prints a PID and persistent log path. Use the printed `tail -f`
+command; the log prints `SESSION:` immediately with the campaign directory.
+Detaching does not survive reboot/power loss; resume the recorded session
+afterward with `scripts/resume_campaign.sh SESSION_DIRECTORY`. Effective
+duration overrides are preserved on resume.
+
+All acquired stage samples, trusted instrument arrays and configured plot
+selections are retained, not only their summaries. Raw data use lossless gzip
+or NPZ, and identical repeated scientific products are hard-linked within the
+campaign to reduce physical storage consumption. See
+`docs/raw-data-retention.md` for exact contents, interpretation and export.
 
 Monitor it from another SSH session with:
 
@@ -196,7 +231,7 @@ Available configuration keys are:
 - `repeats`: measured repetitions, minimum 2;
 - `duration_hours`: active endurance duration; use `null` repeats for a
   duration-controlled campaign;
-- `warmups`: discarded warm-up rounds;
+- `warmups`: retained warm-up rounds excluded from measured summaries;
 - `limit`: first N observations, or `null` for all;
 - `plot_config`: plot-profile path, or `null` for the three core maps;
 - `seed`: deterministic scenario-order seed;

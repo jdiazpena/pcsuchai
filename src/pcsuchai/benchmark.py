@@ -191,10 +191,35 @@ class StageMetrics:
 class BenchmarkRecorder:
     """Collect low-overhead process and system samples when explicitly enabled."""
 
-    def __init__(self, enabled: bool, sample_interval: float = 0.05) -> None:
+    def __init__(
+        self, enabled: bool, sample_interval: float = 0.05,
+        *, sample_path: str | Path | None = None,
+    ) -> None:
+        """Configure summaries plus a mandatory on-disk raw journal when enabled."""
+
         self.enabled = enabled
         self.sample_interval = sample_interval
         self.results: list[StageMetrics] = []
+        self.raw_sample_path: Path | None = None
+        self.journal = None
+        if enabled:
+            if sample_path is None:
+                raise ValueError("enabled benchmarking requires a raw sample_path")
+            if sample_interval <= 0:
+                raise ValueError("sample_interval must be positive")
+            from .retention import RawSampleJournal
+
+            self.journal = RawSampleJournal(Path(sample_path), (
+                "captured_utc", "stage", "phase", "stage_elapsed_seconds",
+                "monotonic_seconds", "process_cpu_seconds",
+                "sample_interval_seconds", "rss_bytes", "threads",
+                "available_memory_bytes", "used_memory_bytes", "swap_used_bytes",
+                "temperature_c", "cpu_frequency_mhz", "load_1m",
+                "process_user_seconds", "process_system_seconds", "read_bytes",
+                "write_bytes", "read_chars", "write_chars", "voluntary_context_switches",
+                "involuntary_context_switches", "minor_page_faults", "major_page_faults",
+                "throttled", "sample_error",
+            ))
 
     @contextmanager
     def measure(self, stage: str):
@@ -225,23 +250,71 @@ class BenchmarkRecorder:
         samples_threads = [process.num_threads()]
         samples_available = [available_start]
         stop = threading.Event()
+        sampling_errors: list[Exception] = []
+        sample_started = time.perf_counter()
+
+        def capture(phase: str, throttled: str | None = None) -> None:
+            """Save every acquired value with UTC and monotonic time, not just extrema."""
+
+            row = {
+                "captured_utc": datetime.now(timezone.utc).isoformat(),
+                "stage": stage, "phase": phase,
+                "stage_elapsed_seconds": time.perf_counter() - sample_started,
+                "monotonic_seconds": time.perf_counter(),
+                "process_cpu_seconds": time.process_time(),
+                "sample_interval_seconds": self.sample_interval, "throttled": throttled,
+            }
+            try:
+                rss = process.memory_info().rss
+                threads = process.num_threads()
+                memory = psutil.virtual_memory()
+                swap = psutil.swap_memory()
+                current_temp = _temperature_c()
+                frequency = psutil.cpu_freq()
+                cpu_times = process.cpu_times()
+                io = process.io_counters() if hasattr(process, "io_counters") else None
+                context = process.num_ctx_switches()
+                faults = _process_faults()
+                row.update({
+                    "rss_bytes": rss, "threads": threads,
+                    "available_memory_bytes": int(memory.available),
+                    "used_memory_bytes": int(memory.used), "swap_used_bytes": int(swap.used),
+                    "temperature_c": current_temp,
+                    "cpu_frequency_mhz": float(frequency.current) if frequency else None,
+                    "load_1m": os.getloadavg()[0] if hasattr(os, "getloadavg") else None,
+                    "process_user_seconds": cpu_times.user,
+                    "process_system_seconds": cpu_times.system,
+                    "read_bytes": io.read_bytes if io else None,
+                    "write_bytes": io.write_bytes if io else None,
+                    "read_chars": getattr(io, "read_chars", None),
+                    "write_chars": getattr(io, "write_chars", None),
+                    "voluntary_context_switches": context.voluntary,
+                    "involuntary_context_switches": context.involuntary,
+                    "minor_page_faults": faults[0], "major_page_faults": faults[1],
+                })
+                samples_rss.append(rss)
+                samples_threads.append(threads)
+                samples_available.append(int(memory.available))
+                if current_temp is not None:
+                    samples_temp.append(current_temp)
+                if frequency is not None:
+                    samples_freq.append(float(frequency.current))
+            except (psutil.Error, OSError) as exc:
+                row["sample_error"] = f"{type(exc).__name__}: {exc}"
+            # Persistence errors deliberately escape: silently losing raw data is invalid.
+            self.journal.append(row)
 
         def sample() -> None:
             while not stop.wait(self.sample_interval):
                 try:
-                    samples_rss.append(process.memory_info().rss)
-                    samples_threads.append(process.num_threads())
-                    samples_available.append(int(psutil.virtual_memory().available))
-                    current_temp = _temperature_c()
-                    if current_temp is not None:
-                        samples_temp.append(current_temp)
-                    frequency = psutil.cpu_freq()
-                    if frequency is not None:
-                        samples_freq.append(float(frequency.current))
-                except (psutil.Error, OSError):
-                    pass
+                    capture("sample")
+                except Exception as exc:
+                    sampling_errors.append(exc)
+                    stop.set()
+                    break
 
         sampler = threading.Thread(target=sample, daemon=True)
+        capture("start", throttle_start)
         cpu_start = time.process_time()
         wall_start = time.perf_counter()
         sampler.start()
@@ -251,7 +324,7 @@ class BenchmarkRecorder:
             wall = time.perf_counter() - wall_start
             cpu = time.process_time() - cpu_start
             stop.set()
-            sampler.join(timeout=max(0.1, self.sample_interval * 2))
+            sampler.join()
             rss_end = process.memory_info().rss
             samples_rss.append(rss_end)
             io_end = process.io_counters() if hasattr(process, "io_counters") else None
@@ -264,6 +337,11 @@ class BenchmarkRecorder:
             finished_utc = datetime.now(timezone.utc).isoformat()
             if temp_end is not None:
                 samples_temp.append(temp_end)
+            throttle_end = _throttled()
+            capture("end", throttle_end)
+            self.journal.sync()
+            if sampling_errors:
+                raise RuntimeError("raw stage sample persistence failed") from sampling_errors[0]
             self.results.append(
                 StageMetrics(
                     stage=stage,
@@ -315,11 +393,13 @@ class BenchmarkRecorder:
                     cpu_frequency_min_mhz=min(samples_freq) if samples_freq else None,
                     cpu_frequency_max_mhz=max(samples_freq) if samples_freq else None,
                     throttled_start=throttle_start,
-                    throttled_end=_throttled(),
+                    throttled_end=throttle_end,
                 )
             )
 
     def write_json(self, path: str | Path) -> None:
-        """Write all collected stage records as stable, machine-readable JSON."""
+        """Write summaries and losslessly compress every raw monitoring sample."""
 
         Path(path).write_text(json.dumps([asdict(item) for item in self.results], indent=2) + "\n")
+        if self.journal is not None:
+            self.raw_sample_path = self.journal.finish()

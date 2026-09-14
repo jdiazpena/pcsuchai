@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import sys
+from dataclasses import fields
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -14,7 +15,8 @@ from .benchmark_suite import _source_digest
 from .data import audit_measurements, load_measurements
 from .orbit.integrity import audit_eop_coverage, validate_sgp4_reference_vector
 from .pipeline import run_analysis
-from .plot_config import load_plot_specs
+from .models import OrbitResult, MagneticResult
+from .plot_config import load_plot_specs, select_plot_data
 from .symh import load_symh, plot_symh
 from .tle import audit_tle_history
 from .validation import validate_magnetic_backends, validate_orbit_backends
@@ -27,6 +29,37 @@ def _artifact(path: str | Path) -> dict:
 
 def _criterion(passed: bool, detail: object) -> dict:
     return {"passed": bool(passed), "detail": detail}
+
+
+def _validate_raw_retention(outputs, measurements, plot_specs) -> bool:
+    """Reload compressed arrays and verify source values and exact plot selections."""
+
+    with np.load(outputs.raw_products_npz, allow_pickle=False) as raw:
+        for field in fields(measurements):
+            value = getattr(measurements, field.name)
+            if field.name == "times":
+                value = [time.isoformat() for time in value]
+            expected = np.asarray(value)
+            actual = raw[f"measurement_{field.name}"]
+            if actual.dtype != expected.dtype or actual.shape != expected.shape or actual.tobytes() != expected.tobytes():
+                return False
+        results = {}
+        for prefix, result_type in (("orbit", OrbitResult), ("magnetic", MagneticResult)):
+            values = {}
+            for field in fields(result_type):
+                value = raw[f"{prefix}_{field.name}"]
+                values[field.name] = value.item() if value.ndim == 0 else value
+            results[prefix] = result_type(**values)
+    if len(outputs.plot_selection_files) != len(plot_specs):
+        return False
+    for spec, path in zip(plot_specs, outputs.plot_selection_files):
+        expected = select_plot_data(spec, measurements, results["orbit"], results["magnetic"])
+        with np.load(path, allow_pickle=False) as saved:
+            for name in ("mask", "x", "y", "values"):
+                actual, wanted = saved[name], getattr(expected, name)
+                if actual.dtype != wanted.dtype or actual.shape != wanted.shape or actual.tobytes() != wanted.tobytes():
+                    return False
+    return True
 
 
 def run_full_validation(
@@ -99,6 +132,7 @@ def run_full_validation(
         "convert_magnetic_coordinates", "write_positions", "render_and_write_plot",
         "write_magnetic_positions", "render_and_write_magnetic_plot",
         "render_and_write_footpoint_plot",
+        "write_raw_scientific_products",
     }
     for orbit_backend in ("astropy", "skyfield"):
         for magnetic_backend in ("aacgmv2", "apexpy"):
@@ -125,6 +159,9 @@ def run_full_validation(
                 "footpoint_map": _artifact(outputs.footpoint_particle_map_png),
                 "manifest": _artifact(outputs.manifest_json),
                 "benchmark": _artifact(outputs.benchmark_json),
+                "raw_products": _artifact(outputs.raw_products_npz),
+                "raw_benchmark_samples": _artifact(outputs.raw_benchmark_samples),
+                "plot_selections": [_artifact(path) for path in outputs.plot_selection_files],
                 "configured_plots": [_artifact(path) for path in outputs.configured_plot_files],
             }
             order_passed = (
@@ -135,6 +172,12 @@ def run_full_validation(
             stage_passed = required_common_stages.issubset(stage_names) and configured_stages.issubset(stage_names)
             plots_passed = len(outputs.configured_plot_files) == len(plot_specs) and all(
                 item["size_bytes"] > 0 for item in artifacts["configured_plots"]
+            )
+            retention_passed = (
+                len(outputs.plot_selection_files) == len(plot_specs)
+                and artifacts["raw_products"]["size_bytes"] > 0
+                and artifacts["raw_benchmark_samples"]["size_bytes"] > 0
+                and _validate_raw_retention(outputs, measurements, plot_specs)
             )
             expected_magnetic_minimum = (
                 len(measurements) if magnetic_backend == "apexpy"
@@ -151,10 +194,11 @@ def run_full_validation(
                     "all_required_stages": stage_passed,
                     "all_configured_plots": plots_passed,
                     "valid_scientific_positions": validity_passed,
+                    "raw_data_retained": retention_passed,
                 },
             }
             criteria[f"complete_pipeline:{name}"] = _criterion(
-                order_passed and stage_passed and plots_passed and validity_passed,
+                order_passed and stage_passed and plots_passed and validity_passed and retention_passed,
                 pipelines[name]["criteria"],
             )
 

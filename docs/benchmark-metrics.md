@@ -30,7 +30,17 @@ configured interval. It contains the active run identifier, phase, SoC
 temperature, CPU frequency and utilization, available and used memory, swap,
 one-minute load, and free storage. These raw samples are retained globally and
 in the corresponding run directory; stage start/maximum/end summaries do not
-replace the raw thermal record.
+replace the raw thermal record. Finished run timelines and campaign segments
+are losslessly gzip-compressed.
+
+The faster stage sampler also retains every acquired row in
+`benchmark-<backends>.samples.csv.gz`, with UTC/monotonic timestamps and
+cumulative CPU, I/O, context-switch and fault counters alongside memory,
+temperature and frequency. It requests 50 ms sampling; actual timestamps are
+authoritative when scheduling delays occur. Firmware throttling is polled at
+stage boundaries and in the slower system timeline. Sampling errors are
+recorded; persistence failures are fatal rather than silently losing data.
+See `raw-data-retention.md` for compression, exact array retention and storage.
 
 ## Optional Linux `perf` counters
 
