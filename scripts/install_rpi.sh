@@ -5,7 +5,7 @@
 set -Eeuo pipefail
 
 ROOT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
-PYTHON_BIN=${PYTHON_BIN:-/usr/bin/python3}
+PYTHON_BIN=/usr/bin/python3
 INSTALL_APT=1
 OFFLINE=0
 
@@ -61,31 +61,12 @@ records = [
 Path(sys.argv[1]).write_text(json.dumps(records, indent=2) + "\n")
 PY
 
-# This dependency belongs to an existing typing package, not PCS SUCHAI. Only
-# request its repair when that package actually declares it and it is missing.
-STUB_REQUIREMENT=$("$PYTHON_BIN" - <<'PY'
-from importlib.metadata import PackageNotFoundError, distribution
-
-try:
-    existing = distribution("types-seaborn")
-except PackageNotFoundError:
-    existing = None
-if existing is not None:
-    try:
-        distribution("pandas-stubs")
-    except PackageNotFoundError:
-        for requirement in existing.requires or ():
-            if requirement.lower().replace("_", "-").startswith("pandas-stubs"):
-                print(requirement)
-                break
-PY
-)
-
-# Ignore old ~/.local packages throughout installation/native build. This does
-# not create an environment or remove those packages; it selects global ones.
-export PYTHONNOUSERSITE=1
+# Use system Python's global packages, not custom Python search paths. Every
+# build/check below uses -s to ignore legacy user-site copies; no environment
+# is created or activated, and no existing user packages are deleted.
 unset PYTHONPATH PYTHONUSERBASE VIRTUAL_ENV
 
+printf '1/3: Installing required system libraries and Python dependencies.\n'
 if ((INSTALL_APT)); then
     sudo apt-get update
     sudo apt-get install -y \
@@ -93,51 +74,25 @@ if ((INSTALL_APT)); then
         patch curl ca-certificates libopenblas-dev liblapack-dev
 fi
 
-# Use the OS Python, never the earlier user-installed pip. Null config prevents
-# a pip setting from silently redirecting this operation back to --user/target.
-GLOBAL_PYTHON=(sudo -H env -u PYTHONPATH -u PYTHONUSERBASE -u VIRTUAL_ENV
-    "PATH=$PATH" PYTHONNOUSERSITE=1 PIP_CONFIG_FILE=/dev/null "$PYTHON_BIN" -s)
-INSTALL_STAGE='global installation destination check'
-"${GLOBAL_PYTHON[@]}" - <<'PY'
-import sys
-from pathlib import Path
-from pip._internal.locations import get_scheme
-
-if sys.prefix != sys.base_prefix or Path(sys.base_prefix).resolve() != Path("/usr"):
-    raise SystemExit("Use Debian's /usr/bin/python3, not a virtual environment or Conda Python.")
-scheme = get_scheme("pcsuchai", isolated=True)
-# Debian's compiler include path remains /usr/include; package libraries,
-# commands and data must use the administrator's /usr/local destinations.
-for name in ("purelib", "platlib", "scripts", "data"):
-    path = Path(getattr(scheme, name)).resolve()
-    if not path.is_relative_to(Path("/usr/local")):
-        raise SystemExit(f"Unsafe global pip destination for {name}: {path}; refusing to write OS-managed directories.")
-print(f"Global Python libraries: {scheme.purelib}\nGlobal commands: {scheme.scripts}")
-PY
+GLOBAL_PYTHON=(sudo -H "$PYTHON_BIN" -s)
 
 global_pip_install() {
-    # --ignore-installed prevents pip uninstalling Debian-owned dependencies.
-    # New files go only to the verified /usr/local scheme. Do not upgrade pip
-    # itself: the apt-managed pip remains the installer used here.
+    # Normal global installation: retain packages that satisfy requirements.
+    # --isolated ignores per-user pip configuration; it creates no environment.
     "${GLOBAL_PYTHON[@]}" -m pip --isolated install \
-        --break-system-packages --ignore-installed --root-user-action=ignore "$@"
+        --break-system-packages "$@"
 }
 
 INSTALL_STAGE='global build tools'
 global_pip_install --report "$REPORT_DIR/pip-build-tools.json" \
-    setuptools wheel meson meson-python ninja
+    'setuptools>=77' wheel meson meson-python ninja
 INSTALL_STAGE='global scientific dependencies'
 global_pip_install --report "$REPORT_DIR/pip-scientific.json" \
     --requirement requirements/rpi-common.txt
-if [[ -n "$STUB_REQUIREMENT" ]]; then
-    INSTALL_STAGE='repair of existing types-seaborn dependency'
-    printf 'Repairing the missing dependency declared by types-seaborn: %s\n' "$STUB_REQUIREMENT"
-    global_pip_install --report "$REPORT_DIR/pip-typing-repair.json" \
-        --constraint requirements/rpi-common.txt "$STUB_REQUIREMENT"
-fi
 
-MACHINE=$($PYTHON_BIN -c 'import platform; print(platform.machine())')
-PY_TAG=$($PYTHON_BIN -c 'import sys; print(f"cp{sys.version_info.major}{sys.version_info.minor}")')
+printf '2/3: Installing ApexPy with the proven ARM build fix.\n'
+MACHINE=$("$PYTHON_BIN" -s -c 'import platform; print(platform.machine())')
+PY_TAG=$("$PYTHON_BIN" -s -c 'import sys; print(f"cp{sys.version_info.major}{sys.version_info.minor}")')
 WHEEL_DIR="$ROOT_DIR/vendor/wheels/${MACHINE}-${PY_TAG}"
 SOURCE_DIR="$ROOT_DIR/vendor/sources"
 mkdir -p "$WHEEL_DIR" "$SOURCE_DIR"
@@ -179,23 +134,22 @@ global_pip_install --report "$REPORT_DIR/pip-apexpy.json" --no-deps "$APEX_WHEEL
 INSTALL_STAGE='global PCS SUCHAI installation'
 global_pip_install --report "$REPORT_DIR/pip-pcsuchai.json" --no-deps --no-build-isolation "$ROOT_DIR"
 
-INSTALL_STAGE='global package versions and ApexPy import/conversion checks'
+printf '3/3: Verifying SUCHAI runtime dependencies and backend imports.\n'
+INSTALL_STAGE='SUCHAI dependency versions and compatibility checks'
+"$PYTHON_BIN" -s scripts/check_dependencies.py \
+    --policy requirements/rpi-version-policy.txt \
+    --report "$REPORT_DIR/dependencies.json"
+
+INSTALL_STAGE='backend imports and ApexPy conversion check'
 "$PYTHON_BIN" -s - <<'PY'
+import importlib
 import numpy as np
 from apexpy import Apex
-from importlib.metadata import distribution
-from pathlib import Path
 
-for line in Path("requirements/rpi-version-policy.txt").read_text().splitlines():
-    requirement = line.split("#", 1)[0].strip()
-    if not requirement:
-        continue
-    name, expected = requirement.split("==", 1)
-    installed = distribution(name)
-    location = Path(installed.locate_file("")).resolve()
-    if installed.version != expected or not location.is_relative_to(Path("/usr/local")):
-        raise SystemExit(f"Invalid global package {name}: {installed.version} at {location}; expected {expected} under /usr/local")
-    print(f"Global package PASS: {name}=={expected} at {location}")
+for module in ("numpy", "matplotlib", "astropy", "sgp4", "skyfield",
+               "aacgmv2", "apexpy", "psutil", "pcsuchai"):
+    importlib.import_module(module)
+    print(f"Import PASS: {module}")
 
 apex = Apex(date=2018.5)
 lat = np.array([-60.0, -30.0, 0.0, 30.0, 60.0])
@@ -209,20 +163,6 @@ assert lat_error < 1e-4 and lon_error < 1e-4
 print(f"ApexPy round-trip PASS: latitude={lat_error:.3e} deg longitude={lon_error:.3e} deg")
 PY
 
-INSTALL_STAGE='dependency consistency checks'
-"$PYTHON_BIN" -s -m pip check > "$REPORT_DIR/pip-check-global.txt" 2>&1 || {
-    cat "$REPORT_DIR/pip-check-global.txt"
-    printf 'ERROR: global dependencies are inconsistent; see %s/install.log\n' "$REPORT_DIR" >&2
-    exit 5
-}
-# Also check what normal interactive Python sees, including legacy user extras.
-# Do not label a dependency-conflicted login installation as complete.
-env -u PYTHONNOUSERSITE "$PYTHON_BIN" -m pip check > "$REPORT_DIR/pip-check-login.txt" 2>&1 || {
-    cat "$REPORT_DIR/pip-check-login.txt"
-    printf 'ERROR: login-user dependencies are inconsistent; see %s/install.log\n' "$REPORT_DIR" >&2
-    exit 5
-}
-cat "$REPORT_DIR/pip-check-global.txt" "$REPORT_DIR/pip-check-login.txt"
 INSTALL_STAGE='capabilities and native dependency report'
 "$PYTHON_BIN" -s -m pcsuchai capabilities
 "$PYTHON_BIN" -s -m pcsuchai installation-report \

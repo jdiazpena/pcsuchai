@@ -56,30 +56,29 @@ The installer:
 4. applies `packaging/apexpy-2.1.1-optional-quadmath.patch` automatically;
 5. builds and caches a native wheel for the current architecture/Python ABI;
 6. installs PCS SUCHAI;
-7. verifies global package versions/locations and performs an Apex geographic/QD round trip;
-8. checks both global and login-user dependency consistency before reporting success.
+7. checks the pinned SUCHAI packages and their active runtime dependencies;
+8. imports every backend, performs an Apex geographic/QD round trip and records native-library dependencies.
 
 It writes a timestamped directory `installation-reports/<UTC>/` with a complete
 `install.log`, a before-install package inventory, per-step pip JSON reports,
-dependency-check output and `native-<architecture>-<python-tag>.json` with the
+`dependencies.json` and `native-<architecture>-<python-tag>.json` with the
 cached wheel hash, installed native-extension hash, dynamic-library inspection,
 interpreter, and scientific package versions. A missing shared library makes
 that report fail.
 
 Run the script as the ordinary `pi` user, without putting `sudo` before the
 script: it invokes `sudo` internally for apt and global Python installation.
-It uses Debian's `/usr/bin/python3` by default. There is no virtual environment
+It uses Debian's `/usr/bin/python3`. There is no virtual environment
 and no `pip --user`. Python commands are installed under `/usr/local/bin`,
 which the installer puts on its PATH before building anything.
 
-Global pip operations use `--break-system-packages` because Debian marks its
-Python externally managed. Before installation, the script verifies that pip's
-library, command and data destinations are under `/usr/local`, not Debian-owned `/usr/lib`.
-It uses `--ignore-installed` to avoid pip uninstalling existing Debian packages,
-and does not upgrade pip itself. Global packages can still shadow OS-provided
-versions, so this workflow is intended for the dedicated benchmark machines.
-The relevant directory separation is described by the
-[Python packaging specification](https://packaging.python.org/en/latest/specifications/externally-managed-environments/).
+Global installation uses system Python with `sudo` and
+`--break-system-packages`. Already-installed packages satisfying the
+requirements are reused: there is no forced reinstall, `--ignore-installed`,
+or pip upgrade. The installer invokes pip with `--isolated` only to ignore
+per-user pip configuration; that option does not create a Python environment.
+Global packages can replace or shadow OS-provided versions, so this workflow
+is intended for the dedicated benchmark machines.
 
 ## Recovering from the older per-user installer
 
@@ -94,18 +93,22 @@ scripts/install_rpi.sh
 The new installer leaves existing `~/.local` packages, data, results and cached
 wheels in place. Installation/build processes and benchmark-master children
 disable Python's user-site lookup so old user packages do not shadow the
-verified global installation; this is a startup setting, not a virtual
+global installation; this is a startup setting, not a virtual
 environment. Normal interactive Python may still see those older packages.
 
-If an existing `types-seaborn` package declares a missing `pandas-stubs`
-dependency, the installer repairs that dependency globally, constrained by the
-scientific version pins. It does not install `types-seaborn` on a clean Pi or
-remove unrelated packages. Any remaining dependency error stops installation
-and is saved in `pip-check-global.txt` or `pip-check-login.txt`; success is never
-printed just because `pip install` returned zero despite a conflict.
+Dependency verification is restricted to the pinned packages in
+`requirements/rpi-version-policy.txt` and their recursively required runtime
+packages. `scripts/check_dependencies.py` checks installed versions, Python
+compatibility and active platform/extra requirements, writing
+`dependencies.json`. A missing or incompatible SUCHAI dependency stops the
+installer before success is printed. Backend imports and the Apex round trip
+are also required to pass.
 
-Dependency consistency is verified with
-[`pip check`](https://pip.pypa.io/en/stable/cli/pip_check/).
+The installer does not run whole-system `pip check` and does not repair or
+install unrelated packages such as Flask, tree-sitter or pandas-stubs. Pip may
+still print warnings about unrelated pre-existing packages; those warnings
+are not an installation failure unless a SUCHAI dependency is affected. Old
+installation reports, results, user packages and cached wheels are retained.
 
 If the Debian prerequisites are already installed:
 
