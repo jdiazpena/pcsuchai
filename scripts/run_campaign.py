@@ -84,6 +84,9 @@ def main() -> int:
 
     print(f"SESSION: {session_dir}", flush=True)
     env = os.environ.copy()
+    # Global Pi installation must not be shadowed by leftovers from the former
+    # --user installer. This is a Python startup option, not an environment.
+    env["PYTHONNOUSERSITE"] = "1"
     env["PYTHONPATH"] = str(root / "src") + (os.pathsep + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
     python = sys.executable
     orbit = [str(item) for item in config["orbit_backends"]]

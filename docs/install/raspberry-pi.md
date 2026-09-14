@@ -51,23 +51,61 @@ and caches.
 The installer:
 
 1. installs Debian compilers and native prerequisites;
-2. installs the pinned Python dependencies for the current user;
+2. installs the pinned Python dependencies globally under `/usr/local`;
 3. downloads ApexPy 2.1.1 and verifies its published SHA-256 digest;
 4. applies `packaging/apexpy-2.1.1-optional-quadmath.patch` automatically;
 5. builds and caches a native wheel for the current architecture/Python ABI;
 6. installs PCS SUCHAI;
-7. performs an Apex geographic/QD round trip and reports all capabilities.
+7. verifies global package versions/locations and performs an Apex geographic/QD round trip;
+8. checks both global and login-user dependency consistency before reporting success.
 
-It also writes `installation-reports/<architecture>-<python-tag>.json` with the
+It writes a timestamped directory `installation-reports/<UTC>/` with a complete
+`install.log`, a before-install package inventory, per-step pip JSON reports,
+dependency-check output and `native-<architecture>-<python-tag>.json` with the
 cached wheel hash, installed native-extension hash, dynamic-library inspection,
 interpreter, and scientific package versions. A missing shared library makes
 that report fail.
 
-It never runs `sudo pip`. Debian packages are installed with `sudo apt`, while
-Python packages are placed in the login user's site directory. The
-`--break-system-packages` flag is required by Debian's externally-managed
-Python policy but, together with `--user`, does not overwrite Debian-owned
-package files.
+Run the script as the ordinary `pi` user, without putting `sudo` before the
+script: it invokes `sudo` internally for apt and global Python installation.
+It uses Debian's `/usr/bin/python3` by default. There is no virtual environment
+and no `pip --user`. Python commands are installed under `/usr/local/bin`,
+which the installer puts on its PATH before building anything.
+
+Global pip operations use `--break-system-packages` because Debian marks its
+Python externally managed. Before installation, the script verifies that pip's
+library, command and data destinations are under `/usr/local`, not Debian-owned `/usr/lib`.
+It uses `--ignore-installed` to avoid pip uninstalling existing Debian packages,
+and does not upgrade pip itself. Global packages can still shadow OS-provided
+versions, so this workflow is intended for the dedicated benchmark machines.
+The relevant directory separation is described by the
+[Python packaging specification](https://packaging.python.org/en/latest/specifications/externally-managed-environments/).
+
+## Recovering from the older per-user installer
+
+If an older installation is still running, interrupt it with Ctrl+C, then
+update the repository and rerun the installer:
+
+```bash
+git pull --ff-only
+scripts/install_rpi.sh
+```
+
+The new installer leaves existing `~/.local` packages, data, results and cached
+wheels in place. Installation/build processes and benchmark-master children
+disable Python's user-site lookup so old user packages do not shadow the
+verified global installation; this is a startup setting, not a virtual
+environment. Normal interactive Python may still see those older packages.
+
+If an existing `types-seaborn` package declares a missing `pandas-stubs`
+dependency, the installer repairs that dependency globally, constrained by the
+scientific version pins. It does not install `types-seaborn` on a clean Pi or
+remove unrelated packages. Any remaining dependency error stops installation
+and is saved in `pip-check-global.txt` or `pip-check-login.txt`; success is never
+printed just because `pip install` returned zero despite a conflict.
+
+Dependency consistency is verified with
+[`pip check`](https://pip.pypa.io/en/stable/cli/pip_check/).
 
 If the Debian prerequisites are already installed:
 

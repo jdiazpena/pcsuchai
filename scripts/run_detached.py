@@ -26,7 +26,7 @@ def main() -> int:
     launch = root / "outputs/benchmarks/launches" / now.strftime("%Y/%m/%d/%Y%m%dT%H%M%S.%fZ")
     launch.mkdir(parents=True, exist_ok=False)
     command = [
-        sys.executable, str(root / "scripts/run_campaign.py"),
+        sys.executable, "-s", str(root / "scripts/run_campaign.py"),
         "--config", "configs/benchmark/endurance.json",
         "--device-label", args.device_label, "--duration-hours", str(args.hours),
         "--notes", args.notes,
