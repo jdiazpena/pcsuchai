@@ -93,6 +93,7 @@ def run_preflight(
     version_policy: str | Path | None = None,
     minimum_free_bytes: int = 1_000_000_000,
     expected_python: str | None = None,
+    selected_backends_only: bool = False,
 ) -> dict:
     """Return a machine-readable go/no-go report for a benchmark campaign."""
 
@@ -134,12 +135,20 @@ def run_preflight(
 
     if version_policy is not None:
         try:
+            selected_packages = {package for backend in requested for package in PACKAGE_FOR_BACKEND.get(backend, ())}
+            optional_packages = {package for packages in PACKAGE_FOR_BACKEND.values() for package in packages}
             for package, expected in _pinned_versions(Path(version_policy)).items():
                 try:
                     actual = version(package)
                 except PackageNotFoundError:
-                    actual = None
-                _add(checks, f"version:{package}", actual == expected, {"expected": expected, "actual": actual})
+                    if package == "pcsuchai":
+                        from . import __version__
+                        actual = __version__  # CLI may execute the hashed source checkout.
+                    else:
+                        actual = None
+                unused = selected_backends_only and package in optional_packages and package not in selected_packages
+                _add(checks, f"version:{package}", actual == expected,
+                     {"expected": expected, "actual": actual, "unused_backend": unused}, required=not unused)
         except Exception as exc:
             _add(checks, "version_policy", False, f"{type(exc).__name__}: {exc}")
 

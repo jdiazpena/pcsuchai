@@ -12,6 +12,10 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "src"))
+from pcsuchai.run_lock import DeviceBusyError, device_run_lock, inherited_lock_fds
+
 
 def _safe_label(value: str) -> str:
     cleaned = re.sub(r"[^A-Za-z0-9_.-]+", "-", value.strip()).strip("-.")
@@ -25,6 +29,7 @@ def _run(command: list[str], *, cwd: Path, env: dict[str, str], log_path: Path) 
         process = subprocess.Popen(
             command, cwd=cwd, env=env, text=True,
             stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            pass_fds=inherited_lock_fds(env),
         )
         assert process.stdout is not None
         for line in process.stdout:
@@ -37,19 +42,30 @@ def _run(command: list[str], *, cwd: Path, env: dict[str, str], log_path: Path) 
         raise SystemExit(f"command failed with exit code {return_code}; see {log_path}")
 
 
-def main() -> int:
+def _campaign_main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", type=Path, default=None)
     parser.add_argument("--device-label", default=None, help="non-identifying label such as pi5-active-cooler")
     parser.add_argument("--notes", default=None)
     parser.add_argument("--output-root", type=Path, default=Path("outputs/benchmarks"))
-    parser.add_argument("--duration-hours", type=float, default=None, help="override the profile duration")
+    stopping = parser.add_mutually_exclusive_group()
+    stopping.add_argument("--duration-hours", type=float, default=None, help="override the profile with a measured deadline")
+    stopping.add_argument("--attempts-per-pair", type=int, default=None, help="override the profile with exactly this many scheduled attempts per pair")
+    parser.add_argument("--session-index", type=int, default=None, help="one-based independent-session index for balanced ordering")
     parser.add_argument("--resume-session", type=Path, default=None, help="resume an existing dated session directory")
     parser.add_argument("--allow-version-drift", action="store_true", help="local development only; never use for cross-Pi results")
     arguments = parser.parse_args()
+    if arguments.attempts_per_pair is not None and arguments.attempts_per_pair < 1:
+        parser.error("--attempts-per-pair must be positive")
+    if arguments.duration_hours is not None and arguments.duration_hours <= 0:
+        parser.error("--duration-hours must be positive")
+    if arguments.session_index is not None and arguments.session_index < 1:
+        parser.error("--session-index must be positive")
+    if arguments.resume_session is not None and any(item is not None for item in (arguments.duration_hours, arguments.attempts_per_pair, arguments.session_index)):
+        parser.error("resume uses the saved stopping rule and session index; overrides are not allowed")
 
     root = Path(__file__).resolve().parent.parent
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S.%fZ")
     if arguments.resume_session is not None:
         session_dir = arguments.resume_session.resolve()
         if not session_dir.is_dir():
@@ -73,6 +89,12 @@ def main() -> int:
         config = json.loads(config_path.read_text(encoding="utf-8"))
         if arguments.duration_hours is not None:
             config["duration_hours"] = arguments.duration_hours
+            config["repeats"] = None
+        if arguments.attempts_per_pair is not None:
+            config["repeats"] = arguments.attempts_per_pair
+            config.pop("duration_hours", None)
+        if arguments.session_index is not None:
+            config["session_index"] = arguments.session_index
         label = _safe_label(arguments.device_label)
         now = datetime.now(timezone.utc)
         session_dir = (
@@ -161,7 +183,17 @@ def main() -> int:
         "--telemetry-interval-seconds", str(config.get("telemetry_interval_seconds", 2.0)),
         "--minimum-free-gb", str(config.get("minimum_free_gb", 1.0)),
         "--max-consecutive-failures", str(config.get("max_consecutive_failures", 3)),
+        "--ordering", str(config.get("ordering", "randomized")),
+        "--session-index", str(config.get("session_index", 1)),
+        "--thread-policy", str(config.get("thread_policy", "stock")),
+        "--process-mode", str(config.get("process_mode", "fresh")),
+        "--selection-method", str(config.get("selection_method", "prefix")),
     ))
+    if config.get("thermal_policy") is not None:
+        thermal_path = session_dir / "thermal-policy.json"
+        if arguments.resume_session is None:
+            thermal_path.write_text(json.dumps(config["thermal_policy"], indent=2) + "\n", encoding="utf-8")
+        command.extend(("--thermal-policy", str(thermal_path)))
     if config.get("maximum_temperature_c") is not None:
         command.extend(("--maximum-temperature-c", str(config["maximum_temperature_c"])))
     if config.get("continue_on_error"):
@@ -175,6 +207,17 @@ def main() -> int:
     _run(command, cwd=root, env=env, log_path=session_dir / f"campaign{log_suffix}.log")
     print(f"\nCOMPLETE: {session_dir}")
     return 0
+
+
+def main() -> int:
+    """Keep validation, recovery and measured jobs under one device-wide lock."""
+
+    try:
+        with device_run_lock():
+            return _campaign_main()
+    except DeviceBusyError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
 
 
 if __name__ == "__main__":

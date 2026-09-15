@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+import gzip
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -34,7 +35,7 @@ def load_measurements(path: str | Path) -> Measurements:
     Parameters
     ----------
     path:
-        Path to the original tab-separated measurement table.
+        Path to the original tab-separated table or its byte-exact gzip snapshot.
 
     Returns
     -------
@@ -54,7 +55,8 @@ def load_measurements(path: str | Path) -> Measurements:
     headers: list[str] = []
     rows: list[int] = []
 
-    with source.open("r", encoding="utf-8-sig", newline="") as handle:
+    opener = gzip.open if source.suffix == ".gz" else open
+    with opener(source, "rt", encoding="utf-8-sig", newline="") as handle:
         reader = csv.DictReader(handle, delimiter="\t")
         missing = [name for name in TRUSTED_COLUMNS if name not in (reader.fieldnames or [])]
         if missing:

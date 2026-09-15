@@ -7,4 +7,5 @@ skyfield==1.55
 aacgmv2==2.7.0
 apexpy==2.1.1
 psutil==7.0.0
+threadpoolctl==3.6.0
 pcsuchai==0.1.0

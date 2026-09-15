@@ -27,7 +27,7 @@ artificially cheaper.
 | Controlled comparison | `scripts/run_comparison.sh pi5` | Full data, 1 warm-up + 5 measured repeats, randomized order, thermal baseline |
 | Complete image workload | `scripts/run_full_products.sh pi5` | Full data and all archive-parity plots, 3 measured repeats |
 | Thermal/memory stability | `scripts/run_stability.sh pi5` | Full data, 20 measured repeats per backend combination, no cooldown |
-| One-/two-day endurance | `scripts/run_endurance.sh pi5 24 "case open"` | Full workload for 24 active hours (use 48 for two days), finishing the current four-scenario round |
+| One-/two-day endurance | `scripts/run_endurance.sh pi5 24 "case open"` | Full workload for 24 measured hours (use 48 for two days), finishing the active job at the deadline |
 | Disconnect-safe endurance | `python3 scripts/run_detached.py pi5 24 "case open"` | The same campaign, detached from SSH, with a persistent launch log |
 
 The three official profiles automatically run and bind a full-code validation
@@ -67,7 +67,7 @@ label or notes.
 3. Captures board, OS, kernel, CPU, memory, swap, storage, governor, clock,
    thermal, throttling, and Python details without network identifiers.
 4. Starts every measurement in a clean Python process.
-5. Randomizes scenario order using a recorded seed.
+5. Uses recorded random or balanced order and declared numerical-library threads.
 6. Validates required artifacts and hashes derived scientific CSV files across
    identical repeats.
 7. Atomically maintains `benchmark-session.checkpoint.json` throughout a long
@@ -76,8 +76,42 @@ label or notes.
    campaign is running.
 9. Writes complete per-run JSON plus flat CSV reports and summary JSON. Compact
    checkpoint/session entries reference complete run records on disk.
-10. Never deletes benchmark products. A free-space guard stops the campaign
-    before the SD card is filled.
+10. Preserves benchmark products and checks free space between runs. This guard
+    does not guarantee that one large job fits; reserve sufficient headroom.
+
+The master and standalone validation/benchmark entry points share one device
+lock across repositories. Concurrent launches fail immediately; subprocesses
+inherit the same lock. Stale owner text after a crash is not a live lock.
+
+The existing master accepts an explicit fixed-work override:
+
+```bash
+python3 scripts/run_campaign.py --config configs/benchmark/comparison.json --device-label pi5 --attempts-per-pair 10 --session-index 1
+```
+
+`--attempts-per-pair` and `--duration-hours` are mutually exclusive. Resume uses
+the saved effective stopping rule/index and rejects overrides. Failures consume
+scheduled attempts; interruptions are retained and not silently retried. Session
+reports include started, valid, failed, interrupted and skipped counts.
+
+Measured duration begins after warm-ups and recovery and includes processing,
+retention and any later recovery. No additional rounds are forced at the deadline.
+Mixed-pair endurance remains a different workload from a sustained single-pair
+block. A singleton execution gives no estimate of repeat uncertainty.
+
+A requested legacy temperature target now fails closed on a missing sensor or
+timeout. Stable recovery is available through `benchmark-suite --thermal-policy`
+or a legacy campaign's `thermal_policy` object. It measures an idle baseline,
+requires a complete stable window and saves compressed raw recovery traces.
+The proposed values require pilot calibration before freezing a comparison.
+
+Versioned reference protocols are in `configs/experiments/`. Use the unified
+`scripts/run_experiment.py` launcher for these manifests, not the legacy
+`--config` runner. Foreground/detached, status, graceful stop and exact-workload
+resume use the same frozen contract. See [manifest-experiments.md](manifest-experiments.md)
+for commands, process/thermal semantics and verified lossless transfer.
+Comparison/reporting and target-specific acceptance still require the evidence
+listed in [benchmark-implementation-status.md](benchmark-implementation-status.md).
 
 ## Session layout
 
@@ -159,11 +193,12 @@ Override the duration in hours without editing the profile:
 scripts/run_endurance.sh pi5 48 "two-day run, active cooler"
 ```
 
-Duration is measured as active campaign time and checked between complete
-randomized rounds. A round contains all four Astropy/Skyfield × AACGMv2/ApexPy
-scenarios, so the campaign can exceed the requested duration by one round. It
-always attempts at least two rounds so variance and repeat consistency remain
-defined.
+Duration begins after initial recovery and warm-ups and is checked before
+each complete attempt. The active job finishes at the deadline; no extra
+rounds or minimum number of successes are forced. A round contains the four
+selected pairs, but the deadline can end a partial round. A single completion
+does not establish repeat uncertainty. New single-pair sustained blocks are
+separate from this legacy mixed-pair workload.
 
 The endurance profile has no cooldown, keeps every generated product, samples
 system telemetry every two seconds, stops at 80 °C between executions, stops
@@ -286,3 +321,44 @@ matching source, inputs, Python version, package versions, settings, scenarios,
 and repeat-consistent scientific outputs. Otherwise it creates a rejection
 report listing every mismatch and exits nonzero. Absolute file paths are not
 compared because they legitimately differ between machines.
+## Representative workload selections
+
+The analysis and benchmark-suite commands accept `--selection-method spread`
+with `--limit N`. This keeps exactly N original observations, including the
+first and last rows when N > 1, and recomputes the complete pipeline for them.
+The raw NPZ retains the original source row IDs; the manifest records actual
+time coverage and duplicate timestamps. Spread means source-index coverage,
+not geographical or anomaly-stratified representativeness. A size larger than
+the input fails. Existing prefix analysis retains its legacy capped-limit
+behavior; prefix is intended for smoke tests. `--selection-method full` requires
+no limit. With no limit, either prefix or spread also processes all rows.
+
+Both fresh and persistent execution use the same selection function. The
+legacy full-code certificate does not authorize a spread/scaling variant;
+exact variant certification and the unified experiment launcher remain work
+in progress. Do not label a non-official scaling diagnostic as a certified
+cross-board benchmark.
+
+## Persistent process lifetime
+
+`benchmark-suite --process-mode persistent` starts one worker before recovery,
+then invokes the same complete production analysis for each scheduled job.
+Measurement tables, selected TLEs and magnetic converter objects are created
+again for every job. Imports and normal library caches persist; the plotting
+code also retains its existing cached Natural Earth context arrays. This is
+not a cold-cache or cache-clearing experiment. Fresh remains the default.
+
+The per-attempt external timer is a persistent request/response round trip,
+including protocol persistence, rather than process launch through exit. The
+worker response separately records science execution time. Worker startup/import
+and shutdown have separate records, and worker/supervisor resource observations
+remain raw. These differing boundaries must be declared when comparing process
+lifetimes; do not treat the first-start cost as measured on every persistent
+iteration. A timeout does not start a replacement or become a successful job.
+Campaign finalization closes the actual worker and retains its protocol JSONL
+and stderr as verified gzip plus `worker-exit.json`.
+
+The short local tests check numerical parity, figure/descriptor cleanup and a
+bounded RSS budget. They are not evidence of long-duration memory stability.
+The complete persistent experiment/reporting workflow in the completion plan
+is still being implemented.

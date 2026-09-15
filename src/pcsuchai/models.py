@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 
 import numpy as np
@@ -97,7 +97,11 @@ class MagneticResult:
 
     Magnetic latitude and longitude are degrees and magnetic local time is
     hours. ``surface_*`` is the geographic location obtained by mapping the
-    observation to zero-kilometre model height. The two supported backends use
+    observation to zero-kilometre model height (AACGM geocentric reference
+    height; ApexPy geodetic height). Returned geodetic altitude is retained
+    separately; ``mapping_error_deg`` is unavailable/NaN for AACGM, whose
+    inverse API returns altitude rather than an angular residual.
+    The two supported backends use
     different coordinate definitions, identified by ``coordinate_system``;
     their numeric coordinates are not expected to be identical.
     """
@@ -111,3 +115,4 @@ class MagneticResult:
     error_codes: np.ndarray
     backend: str
     coordinate_system: str
+    surface_altitude_km: np.ndarray = field(default_factory=lambda: np.empty(0, dtype=float))

@@ -15,6 +15,7 @@ from .data import load_measurements
 from .magnetic import convert_magnetic
 from .orbit import propagate
 from .plot_config import load_plot_specs, select_plot_data
+from .provenance import native_thread_state
 from .plotting import (
     plot_configured_map,
     plot_footpoint_particle_map,
@@ -119,6 +120,7 @@ def _write_magnetic_positions(path, measurements, magnetic) -> None:
             "magnetic_longitude_deg", "magnetic_local_time_hours",
             "surface_geographic_latitude_deg", "surface_geographic_longitude_deg",
             "mapping_error_deg", "magnetic_backend", "coordinate_system", "error_code",
+            "surface_geodetic_altitude_km",
         ])
         for index, timestamp in enumerate(measurements.times):
             writer.writerow([
@@ -128,6 +130,7 @@ def _write_magnetic_positions(path, measurements, magnetic) -> None:
                 magnetic.surface_latitude_deg[index], magnetic.surface_longitude_deg[index],
                 magnetic.mapping_error_deg[index], magnetic.backend,
                 magnetic.coordinate_system, int(magnetic.error_codes[index]),
+                magnetic.surface_altitude_km[index],
             ])
 
 
@@ -142,6 +145,10 @@ def run_analysis(
     particle_threshold: float = 0.0,
     plot_config_path: str | Path | None = None,
     benchmark: bool = False,
+    selection_method: str = "prefix",
+    observation_level: str = "normal",
+    stage_interval_seconds: float = 0.05,
+    native_memory_interval_seconds: float = 10.0,
 ) -> AnalysisOutputs:
     """Run the first complete local pipeline and write reproducible artifacts."""
 
@@ -151,11 +158,19 @@ def run_analysis(
         f"{orbit_backend}-{magnetic_backend}" if magnetic_backend != "none" else orbit_backend
     )
     recorder = BenchmarkRecorder(
-        benchmark, sample_path=destination / f"benchmark-{run_label}.samples.csv"
+        benchmark, sample_path=destination / f"benchmark-{run_label}.samples.csv",
+        sample_interval=stage_interval_seconds, observation_level=observation_level,
+        native_memory_interval=native_memory_interval_seconds,
     )
 
     with recorder.measure("load_measurements"):
-        measurements = load_measurements(measurement_path).first(limit)
+        from .workload import describe_selection, select_measurements
+        original_measurements = load_measurements(measurement_path)
+        # Legacy prefix calls retain their previous oversized-limit behavior.
+        effective_limit = min(limit, len(original_measurements)) if selection_method == "prefix" and type(limit) is int else limit
+        measurements = select_measurements(original_measurements, effective_limit, selection_method)
+        workload_selection = describe_selection(original_measurements, measurements, limit, selection_method)
+        del original_measurements
         plot_specs = load_plot_specs(plot_config_path) if plot_config_path is not None else ()
     with recorder.measure("load_and_select_tles"):
         records = load_tle_history(tle_path)
@@ -166,6 +181,10 @@ def run_analysis(
     if magnetic_backend != "none":
         with recorder.measure("convert_magnetic_coordinates"):
             magnetic = convert_magnetic(magnetic_backend, measurements.times, orbit)
+            from .magnetic.integrity import audit_magnetic_result
+            magnetic_integrity = audit_magnetic_result(magnetic, orbit)
+            if not magnetic_integrity["passed"]:
+                raise ValueError(f"magnetic output violates row/domain/unit contract: {magnetic_integrity['checks']}")
     raw_products_path = destination / f"raw-products-{run_label}.npz"
     with recorder.measure("write_raw_scientific_products"):
         _write_raw_products(raw_products_path, measurements, selection, orbit, magnetic, particle_threshold)
@@ -218,7 +237,7 @@ def run_analysis(
                 metadata = plot_configured_map(spec, selected, configured_path)
             if spec.calculate_centroid:
                 metadata["particle_weighted_centroid"] = calculate_particle_weighted_centroid(
-                    spec, measurements, orbit, magnetic
+                    spec, measurements, orbit, magnetic, allow_unavailable=True
                 )
         configured_plot_metadata.append(metadata)
         configured_plot_files.append(str(configured_path))
@@ -229,7 +248,9 @@ def run_analysis(
     manifest = {
         "orbit_backend": orbit_backend,
         "magnetic_backend": magnetic_backend,
+        "magnetic_integrity": magnetic_integrity if magnetic is not None else None,
         "observations": len(measurements),
+        "workload_selection": workload_selection,
         "valid_positions": valid_positions,
         "invalid_positions": len(measurements) - valid_positions,
         "later_tle_assignments": int(np.count_nonzero(selection.offset_seconds < 0)),
@@ -247,9 +268,20 @@ def run_analysis(
             "eop": str(eop_path), "plot_config": str(plot_config_path),
         },
         "runtime": runtime_metadata(),
+        "native_threads": native_thread_state(),
         "raw_products_npz": str(raw_products_path),
+        "instrumentation": {"level": observation_level if benchmark else "disabled",
+                            "stage_sampling": "not_collected" if not recorder.enabled else "enabled",
+                            "requested_stage_interval_seconds": stage_interval_seconds,
+                            "native_memory_interval_seconds": native_memory_interval_seconds,
+                            "external_board_observation": "controlled independently by campaign"},
         "plot_selection_files": plot_selection_files,
         "raw_data_retention": "lossless; all source rows and full plot masks preserved",
+        "magnetic_mapping_contract": ({
+            "angular_residual": "degrees; ApexPy map_to_height residual only; unavailable for AACGMv2",
+            "surface_altitude": "geodetic kilometres returned by mapping",
+            "target": "AACGM zero geocentric height (reference radius 6371.2 km)" if magnetic_backend == "aacgmv2" else "ApexPy zero geodetic height",
+        } if magnetic is not None else None),
     }
     if benchmark_path is not None:
         recorder.write_json(benchmark_path)

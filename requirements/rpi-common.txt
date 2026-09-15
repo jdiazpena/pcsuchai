@@ -8,3 +8,4 @@ sgp4==2.27
 skyfield==1.55
 aacgmv2==2.7.0
 psutil==7.0.0
+threadpoolctl==3.6.0

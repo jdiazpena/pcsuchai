@@ -27,6 +27,7 @@ def convert_aacgmv2(times: tuple, orbit: OrbitResult) -> MagneticResult:
     surface_latitude = np.full(count, np.nan)
     surface_longitude = np.full(count, np.nan)
     mapping_error = np.full(count, np.nan)
+    surface_altitude = np.full(count, np.nan)
     errors = np.full(count, 3, dtype=np.int16)
 
     logger_was_disabled = aacgmv2.logger.disabled
@@ -47,15 +48,18 @@ def convert_aacgmv2(times: tuple, orbit: OrbitResult) -> MagneticResult:
                 if not np.all(np.isfinite((mlat, mlon, mlt))):
                     errors[index] = 1
                     continue
-                slat, slon, residual = aacgmv2.convert_latlon(
+                slat, slon, altitude = aacgmv2.convert_latlon(
                     mlat, mlon, 0.0, timestamp, method_code="A2G|ALLOWTRACE"
                 )
-                if not np.all(np.isfinite((slat, slon))):
+                if not np.all(np.isfinite((slat, slon, altitude))):
                     errors[index] = 1
                     continue
                 latitude[index], longitude[index], local_time[index] = mlat, mlon, mlt
                 surface_latitude[index], surface_longitude[index] = slat, slon
-                mapping_error[index] = residual
+                # A2G's third output is geodetic altitude in km, not an
+                # angular residual. Preserve it separately; this conversion
+                # supplies no angular mapping-error estimate.
+                surface_altitude[index] = altitude
                 errors[index] = 0
             except (ValueError, RuntimeError, OverflowError):
                 continue
@@ -64,5 +68,5 @@ def convert_aacgmv2(times: tuple, orbit: OrbitResult) -> MagneticResult:
 
     return MagneticResult(
         latitude, longitude, local_time, surface_latitude, surface_longitude,
-        mapping_error, errors, "aacgmv2", "aacgm",
+        mapping_error, errors, "aacgmv2", "aacgm", surface_altitude,
     )

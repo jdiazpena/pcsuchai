@@ -33,7 +33,7 @@ Then run:
 ```bash
 cd pcsuchai
 scripts/install_rpi.sh
-scripts/run_quick_check.sh pi5
+python3 scripts/run_experiment.py run --manifest configs/experiments/acceptance.json --device-label pi5
 ```
 
 The maintainer may distribute one checksum-protected archive instead of a Git
@@ -43,10 +43,19 @@ checkout:
 scripts/create_release_bundle.sh
 ```
 
-This writes `dist/pcsuchai-<version>.tar.gz` and a matching `.sha256` file. It
+This requires Git and clean committed tracked files. It writes
+`dist/pcsuchai-<version>-<commit-prefix>.tar.gz` and a matching `.sha256` file,
+refusing to replace either existing artifact. Untracked local material is never
+packaged; accidentally committed private/generated paths are rejected. It
 includes code, documentation, the canonical measurement CSV, TLE/EOP inputs, configuration, and compatible
 cached wheels while excluding the read-only archive, old outputs, Git metadata,
-and caches.
+installation reports, alternative raw files, secrets/configuration and source
+caches. `release-manifest.json` binds every source/wheel byte to a Git commit.
+Cached wheels are checked for matching Apex version and filename/directory/WHEEL
+tags, not executed; runtime/native/full-data acceptance is still mandatory.
+Publication uses Linux hard links; use a destination supporting them. A failed
+publication retains its new partial files for diagnosis. No retained benchmark
+data are removed. See [Pi 5 handoff](../pi5-handoff.md) for exact first-run commands.
 
 The installer:
 
@@ -145,19 +154,24 @@ reproducible deployment artifact.
 
 ## Installation acceptance
 
-The installation is accepted only after the quick campaign completes. Its
-`preflight.json` must say `"status": "pass"`, and its final
-`benchmark-session.json` must say both `"status": "complete"` and
-`"scientific_outputs_consistent": true`.
+Installation checks alone are not scientific acceptance. Run the unified
+acceptance command above. Require a successful exit, root
+`experiment-state.json` with `"status": "complete"`, all four smoke attempts
+accepted against their own full-data references, and a passing fifteen-gate
+`full-validation-certificate.json`. Preserve the entire printed experiment
+directory. A stopped, failed or partial campaign is not acceptance.
+The older quick campaign remains a diagnostic, not a replacement for this gate.
 
 The installer itself is deliberately tested on each Pi as dependency work.
 Scientific source code is not edited or debugged on a Pi. Any scientific or
 pipeline failure is reproduced and fixed on the local development PC first.
 
-After the quick acceptance check, launch a disconnect-safe 24-hour campaign:
+After unified acceptance and pilot review, use the single-pair four-hour
+commands in [Pi 5 handoff](../pi5-handoff.md). The older mixed-pair launcher
+remains available as a separate legacy workload; for example:
 
 ```bash
-python3 scripts/run_detached.py pi5 24 "active cooler, case open"
+python3 scripts/run_detached.py pi5 24
 ```
 
 Use `48` instead of `24` for two days. The launcher prints a log path and PID;
@@ -168,7 +182,9 @@ requested duration; it never deletes earlier results.
 
 Raw samples and input snapshots are losslessly compressed, and identical
 repeated products share backing storage on the normal Linux filesystem. See
-`docs/raw-data-retention.md` for reading, exporting and preserving these data.
+[raw-data retention](../raw-data-retention.md) for reading, exporting and
+preserving these data. Record the actual existing cooling configuration; this
+example neither requires nor assumes a particular cooler.
 
 ## Updating dependencies
 

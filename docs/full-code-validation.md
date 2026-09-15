@@ -5,7 +5,8 @@ official Raspberry Pi benchmark. None may be substituted for another.
 
 ## Production workload
 
-Every official backend scenario is one clean Python process executing:
+Every complete backend scenario executes the following chain in one worker
+process (fresh by default; persistent lifetime is a separately declared variant):
 
 ```text
 trusted measurement loading and audit
@@ -50,6 +51,13 @@ It covers:
 - final Astropy/Skyfield WGS84 consistency and row-level differences;
 - AACGMv2 and ApexPy execution from both orbit backends;
 - all four complete pipeline combinations and all configured plots;
+- preserved magnetic invalid-row masks, coordinate/MLT ranges and model-specific
+  footpoint altitude/angular-residual units;
+- version-specific published magnetic regressions for each model and separately
+  labelled production API bridges, with all acquired values retained in hashed
+  compressed reports; see [magnetic reference acceptance](magnetic-reference-validation.md);
+- PNG decoding, declared dimensions, selected-point counts matched to saved
+  masks, filled-marker metadata and added geographic land/border context;
 - required process-stage order: orbit before magnetic conversion;
 - independence of orbit CSV output from the selected downstream magnetic
   backend;
@@ -59,6 +67,28 @@ An official benchmark verifies the certificate again immediately before it
 runs. Any source edit, changed input byte, changed plot configuration, Python
 version, package version, row limit, failed criterion, or incomplete workload
 invalidates it.
+Verification also rejects malformed/duplicate-key certificate JSON, missing or
+failed recorded criteria, and corrupted retained pipeline artifacts. A copied
+top-level `status: pass` is not sufficient evidence. Retained manifests/stage
+order, arrays, plot masks and decoded images are rechecked.
+Contract version 2 requires fifteen gates and both raw magnetic reference
+reports. Verified historical source snapshots retain their original contract;
+removing new flags/gates from new-source evidence cannot bypass acceptance.
+
+Manifest-driven experiments separately accept their actual selected workload
+against the certificate's full-data arrays after the measured blocks finish.
+Prefix/spread/full selections and different frozen profiles keep exact source
+rows and plot decisions. This acceptance runs outside measured clocks and never
+rewrites an original attempt record. Historical offline reporting binds the
+certificate to its own archived source/runtime rather than today's checkout;
+see [saved-benchmark-reports.md](saved-benchmark-reports.md).
+
+The invariant/image checks do not establish absolute magnetic accuracy or
+prove that overlapping plotted points can be visually distinguished. Saved
+unrounded arrays and complete masks remain the scientific comparison data.
+Fresh/persistent parity and resource-stability evidence are separate from the
+fresh-process scientific certificate; see
+[running-benchmarks.md](running-benchmarks.md#persistent-process-lifetime).
 
 ## Official and diagnostic labels
 
@@ -75,6 +105,10 @@ Quick checks and focused orbit/magnetic benchmarks contain `"official":
 false` and a diagnostic classification. Cross-device comparison refuses those
 reports. A diagnostic can help explain performance but cannot support the final
 Raspberry Pi ranking.
+The new manifest-driven saved reports still carry an explicit diagnostic
+hardware classification while the completion plan is unfinished. A
+`full_reference_workloads_accepted` scientific classification alone does not
+certify thermal control, PMU availability or a complete Pi ranking.
 
 ## TLE assignment-age gate
 
@@ -101,3 +135,12 @@ functionality, but it is not repeated inside every satellite-like backend
 scenario: OMNI geomagnetic indices are external context, not an output of the
 onboard Langmuir/particle/TLE pipeline. This distinction is recorded in the
 certificate rather than silently omitting the code path.
+## Independent saved-analysis checks
+
+Every configured plot's selected count/status/range and every time-availability
+plot's exact selected UTC endpoints are checked against retained data. Requested
+centroids use an independent scalar reference; undefined longitudes and
+overflowed totals have explicit availability. These checks contribute to each
+full-pipeline criterion and are also rerun by saved-record reports. See
+[analysis-product-validation.md](analysis-product-validation.md) for the numerical
+contract and its limits; summary agreement is not absolute orbit/model truth.

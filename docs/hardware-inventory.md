@@ -44,7 +44,6 @@ recorded for every benchmark session:
 
 - Power-supply model and rated output.
 - Cooling configuration: none, heatsink, passive case, or fan.
-- Approximate ambient temperature.
 - Boot storage make, model, capacity, and interface.
 - Attached USB or other peripheral devices.
 - Whether Ethernet, Wi-Fi, or no network was active during the run.

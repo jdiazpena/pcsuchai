@@ -9,11 +9,11 @@ The canonical input `data/raw/langmuir-2018-2.csv` is included in Git and
 release bundles. The input manifest verifies its exact bytes. `archive/`
 and generated benchmark outputs remain excluded from Git.
 
-The first working slice loads only trusted instrument products, assigns the
-nearest historical TLE (including a later TLE when it is closer), propagates the
-orbit through a selectable backend, and produces a minimal geographic
-particle-count map. Previously calculated geographic and classification columns
-in the source table are ignored.
+The pipeline loads trusted instrument products, selects the nearest historical
+TLE (including a later epoch when closer), propagates the orbit, converts magnetic
+coordinates and geographic ground footpoints, applies the configured filters,
+and saves maps, tables and complete compressed raw arrays. Previously calculated
+geographic and classification columns in the source table are ignored.
 
 AACGMv2 and ApexPy are both supported as first-class magnetic-coordinate
 backends. They produce different native coordinate systems, so the edge-device
@@ -54,13 +54,24 @@ environment or manually copying an ApexPy installation:
 
 ```bash
 scripts/install_rpi.sh
-scripts/run_quick_check.sh pi5
-scripts/run_comparison.sh pi5
+python3 scripts/run_experiment.py run --manifest configs/experiments/acceptance.json --device-label pi5
+python3 scripts/run_experiment.py run --manifest configs/experiments/equal-work.json --device-label pi5 --detach
 ```
 
-Use `scripts/run_full_products.sh` to benchmark every archive-parity image,
-`scripts/run_stability.sh` for repeated thermal/memory testing, and
-`scripts/run_endurance.sh` for resumable multi-day campaigns. Benchmark storage
+The unified launcher uses immutable manifests for acceptance, equal work,
+sustained blocks, persistent workers, counters, scaling and observation overhead.
+See [Pi 5 handoff](docs/pi5-handoff.md) for exact installation, acceptance and
+single-pair four-hour commands; [manifest experiments](docs/manifest-experiments.md)
+describes all controls. Equal-work thermal defaults require pilot calibration.
+Local verification is not Pi acceptance or a completed hardware comparison;
+the [completion status](docs/benchmark-implementation-status.md) records both
+verified evidence and remaining target work.
+The [release audit](docs/release-audit.md) explicitly preserves all eight
+completion gates, including target measurements not established locally.
+
+Existing launchers remain available: `scripts/run_full_products.sh` benchmarks every archive-parity image,
+`scripts/run_stability.sh` supports repeated thermal/memory testing, and
+`scripts/run_endurance.sh` supports resumable multi-day campaigns. Benchmark storage
 is UTC-ordered by device/year/month/day/session; every execution retains its
 timestamped products, run record, and telemetry. Nothing is automatically
 discarded. Raw stage samples and campaign input snapshots use verified gzip;
@@ -71,11 +82,12 @@ experiment controls, artifact layout, and metric definitions are documented in
 `docs/install/raspberry-pi.md`, `docs/running-benchmarks.md`, and
 `docs/benchmark-metrics.md`.
 
-After the quick acceptance check, launch a one-day campaign that survives
-closing SSH with `python3 scripts/run_detached.py pi5 24 "active cooler"`.
-Use `48` for two days. The launcher prints a persistent log path; low-space
-or thermal stops preserve earlier results. Storage and raw-data reading/export
-are documented in `docs/raw-data-retention.md`.
+For legacy mixed-pair endurance, `python3 scripts/run_detached.py pi5 24`
+launches a one-day campaign after acceptance/pilot review. It is distinct from
+the new single-pair sustained protocol. Both detached paths run on the Pi after
+closing SSH; neither automatically resumes after reboot. Low-space/thermal stops
+preserve earlier results. Raw-data reading/export is documented in
+`docs/raw-data-retention.md`.
 
 Official campaigns first execute `scripts/run_full_validation.sh` semantics and
 require a certificate matching the exact source, inputs, interpreter,
@@ -84,8 +96,11 @@ dependencies, and full 32-plot workload. The acceptance contract is defined in
 benchmarks are explicitly marked non-official.
 
 For redistribution, `scripts/create_release_bundle.sh` creates a single
-checksum-protected archive and includes any architecture-specific ApexPy wheels
-previously cached by the installer.
+checksum-protected archive from clean committed public files and metadata-checked
+ApexPy wheels previously cached by the installer. It excludes untracked local
+material and refuses to overwrite existing archives/checksums; see
+[installation](docs/install/raspberry-pi.md). Wheel metadata checks do not replace
+native/runtime/scientific acceptance on each target.
 
 ## License and citation
 

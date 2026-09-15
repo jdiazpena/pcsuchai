@@ -104,11 +104,12 @@ def snapshot_inputs(inputs: dict[str, Path], destination: Path) -> dict:
         shutil.copyfile(source, copy)
         if sha256_file(copy) != source_hash or sha256_file(source) != source_hash:
             raise RuntimeError(f"input changed during snapshot: {source}")
+        original_size = copy.stat().st_size
         compressed = compress_retained_file(copy, remove_original=True)
         records[role] = {
             "path": str(compressed), "source_path": str(source),
             "source_sha256": source_hash,
-            "source_size_bytes": source.stat().st_size,
+            "source_size_bytes": original_size,
             "compressed_sha256": sha256_file(compressed),
         }
     return records
@@ -126,6 +127,32 @@ def snapshot_sources(root: Path, source_record: dict, destination: Path) -> dict
                 archive.add(source, arcname=record["path"], recursive=False)
         output.flush()
         os.fsync(output.fileno())
+    # Verifying only the source before tar.add is insufficient: its bytes can
+    # change while the tar reader is consuming it. Audit the actual archive
+    # against every recorded digest before declaring a reproducible snapshot.
+    expected = {record["path"]: record for record in source_record["files"]}
+    seen = set()
+    with tarfile.open(destination, "r:gz") as archive:
+        for member in archive:
+            if member.name not in expected or member.name in seen or not (member.isfile() or member.islnk()):
+                raise RuntimeError(f"unexpected source snapshot member: {member.name}")
+            stream = archive.extractfile(member)
+            if stream is None:
+                raise RuntimeError(f"unreadable source snapshot member: {member.name}")
+            digest, size = hashlib.sha256(), 0
+            with stream:
+                for block in iter(lambda: stream.read(1024 * 1024), b""):
+                    digest.update(block)
+                    size += len(block)
+            record = expected[member.name]
+            if digest.hexdigest() != record["sha256"] or size != record["size_bytes"]:
+                raise RuntimeError(f"source bytes changed during snapshot: {member.name}")
+            seen.add(member.name)
+    if seen != set(expected):
+        raise RuntimeError("source snapshot is incomplete")
+    for record in expected.values():
+        if sha256_file(root / record["path"]) != record["sha256"]:
+            raise RuntimeError(f"source changed before snapshot completed: {record['path']}")
     return {"path": str(destination), "sha256": sha256_file(destination)}
 
 
@@ -143,6 +170,9 @@ def deduplicate_products(products: Path, store: Path) -> dict:
     new_content_bytes = 0
     shared_files = 0
     fallback_files = 0
+    new_allocated_bytes = 0
+    new_inodes = 0
+    allocation_available = True
     for product in sorted(products.rglob("*")):
         if not product.is_file() or product.is_symlink():
             continue
@@ -155,6 +185,10 @@ def deduplicate_products(products: Path, store: Path) -> dict:
             if not stored.exists():
                 os.link(product, stored)
                 new_content_bytes += size
+                stat = product.stat()
+                allocation_available &= hasattr(stat, "st_blocks")
+                new_allocated_bytes += getattr(stat, "st_blocks", 0) * 512
+                new_inodes += 1
                 continue
             if sha256_file(stored) != digest:
                 raise RuntimeError(f"retained artifact was modified: {stored}")
@@ -167,10 +201,18 @@ def deduplicate_products(products: Path, store: Path) -> dict:
             # No loss of data on FAT/network/cross-device filesystems.
             fallback_files += 1
             new_content_bytes += size
+            stat = product.stat()
+            allocation_available &= hasattr(stat, "st_blocks")
+            new_allocated_bytes += getattr(stat, "st_blocks", 0) * 512
+            new_inodes += 1
             if temporary.exists():
                 temporary.unlink()
     return {
         "mode": "lossless_sha256_hardlinks", "logical_product_bytes": logical_bytes,
         "new_content_bytes": new_content_bytes, "shared_files": shared_files,
         "fallback_files": fallback_files,
+        "new_product_allocated_bytes": new_allocated_bytes if allocation_available else None,
+        "new_product_inodes": new_inodes,
+        "allocation_source": "st_blocks*512 for newly retained/fallback product inodes",
+        "allocation_limit": "file blocks only; excludes directories, filesystem metadata and temporary peak",
     }

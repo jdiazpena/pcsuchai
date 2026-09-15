@@ -24,7 +24,6 @@ Captured on 2026-08-14 before installation of the SUCHAI-1 analysis software.
 
 - Power-supply model and rated output.
 - Cooling configuration.
-- Approximate ambient temperature.
 - MicroSD make and model.
 - Network mode used during benchmarks.
 

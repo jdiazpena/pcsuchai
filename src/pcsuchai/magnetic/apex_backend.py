@@ -27,6 +27,7 @@ def convert_apexpy(times: tuple, orbit: OrbitResult) -> MagneticResult:
     surface_latitude = np.full(count, np.nan)
     surface_longitude = np.full(count, np.nan)
     mapping_error = np.full(count, np.nan)
+    surface_altitude = np.full(count, np.nan)
     errors = np.full(count, 3, dtype=np.int16)
 
     for index, timestamp in enumerate(times):
@@ -52,11 +53,12 @@ def convert_apexpy(times: tuple, orbit: OrbitResult) -> MagneticResult:
             latitude[index], longitude[index], local_time[index] = mlat, mlon, mlt
             surface_latitude[index], surface_longitude[index] = slat, slon
             mapping_error[index] = residual
+            surface_altitude[index] = 0.0
             errors[index] = 0
         except (ValueError, RuntimeError, OverflowError):
             continue
 
     return MagneticResult(
         latitude, longitude, local_time, surface_latitude, surface_longitude,
-        mapping_error, errors, "apexpy", "modified_apex",
+        mapping_error, errors, "apexpy", "modified_apex", surface_altitude,
     )

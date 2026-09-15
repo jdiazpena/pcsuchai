@@ -29,6 +29,7 @@ def test_first_slice_writes_outputs_and_optional_benchmark(tmp_path) -> None:
     assert {item["stage"] for item in metrics} == {
         "load_measurements", "load_and_select_tles", "propagate_orbit",
         "write_positions", "render_and_write_plot",
+        "write_raw_scientific_products",
     }
 
 

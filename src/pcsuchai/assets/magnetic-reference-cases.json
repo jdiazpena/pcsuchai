@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "scope": "published_upstream_regression_not_independent_physical_truth",
+  "models": {
+    "aacgmv2": {
+      "version": "2.7.0",
+      "source": "https://raw.githubusercontent.com/aburrell/aacgmv2/v2.7.0/aacgmv2/tests/test_c_aacgmv2.py",
+      "tolerance": {"rtol": 0, "atol": 0.00015, "strict": true, "provenance": "upstream assert_almost_equal(decimal=4): abs(delta) < 1.5e-4; each component in its stated unit"},
+      "cases": [
+        {"id": "g2a-2014", "operation": "convert_latlon", "utc": "2014-03-22T03:11:00+00:00", "args": [45.5, -23.5, 1135], "method": "G2A", "expected": [48.1902, 57.7505, 1.1775], "units": ["degree", "degree", "earth_radius_6371.2_km"]},
+        {"id": "g2a-2018", "operation": "convert_latlon", "utc": "2018-01-01T00:00:00+00:00", "args": [60, 0, 300], "method": "G2A", "expected": [58.2199, 80.7290, 1.0457], "units": ["degree", "degree", "earth_radius_6371.2_km"]},
+        {"id": "a2g-2014", "operation": "convert_latlon", "utc": "2014-03-22T03:11:00+00:00", "args": [45.5, -23.5, 1135], "method": "A2G", "expected": [30.7550, -94.1724, 1133.6246], "units": ["degree", "degree", "geodetic_km"]},
+        {"id": "a2g-2018", "operation": "convert_latlon", "utc": "2018-01-01T00:00:00+00:00", "args": [60, 0, 300], "method": "A2G", "expected": [50.4364, -77.5309, 305.7305], "units": ["degree", "degree", "geodetic_km"]},
+        {"id": "trace-g2a-2014", "operation": "convert_latlon", "utc": "2014-03-22T03:11:00+00:00", "args": [45.5, -23.5, 1135], "method": "G2A|TRACE", "expected": [48.1954, 57.7456, 1.1775], "units": ["degree", "degree", "earth_radius_6371.2_km"]},
+        {"id": "trace-g2a-2018", "operation": "convert_latlon", "utc": "2018-01-01T00:00:00+00:00", "args": [60, 0, 300], "method": "G2A|TRACE", "expected": [58.2194, 80.7371, 1.0457], "units": ["degree", "degree", "earth_radius_6371.2_km"]},
+        {"id": "trace-a2g-2014", "operation": "convert_latlon", "utc": "2014-03-22T03:11:00+00:00", "args": [45.5, -23.5, 1135], "method": "A2G|TRACE", "expected": [30.7661, -94.1727, 1133.6282], "units": ["degree", "degree", "geodetic_km"]},
+        {"id": "trace-a2g-2018", "operation": "convert_latlon", "utc": "2018-01-01T00:00:00+00:00", "args": [60, 0, 300], "method": "A2G|TRACE", "expected": [50.4403, -77.5426, 305.7319], "units": ["degree", "degree", "geodetic_km"]},
+        {"id": "high-allowtrace", "operation": "convert_latlon", "utc": "2014-03-22T03:11:00+00:00", "args": [45.5, -23.5, 5500], "method": "G2A|ALLOWTRACE", "expected": [59.9753, 57.7294, 1.8626], "units": ["degree", "degree", "earth_radius_6371.2_km"]},
+        {"id": "mlt-noon", "operation": "convert_mlt", "utc": "2014-03-22T03:11:00+00:00", "args": [12], "expected": [-153.6033], "units": ["degree"]},
+        {"id": "mlt-overflow", "operation": "convert_mlt", "utc": "2014-03-22T03:11:00+00:00", "args": [25], "expected": [41.3967], "units": ["degree"]},
+        {"id": "mlt-negative", "operation": "convert_mlt", "utc": "2014-03-22T03:11:00+00:00", "args": [-1], "expected": [11.3967], "units": ["degree"]}
+      ]
+    },
+    "apexpy": {
+      "version": "2.1.1",
+      "source": "https://raw.githubusercontent.com/aburrell/apexpy/v2.1.1/apexpy/tests/test_Apex.py",
+      "tolerance": {"rtol": 0.00001, "atol": 0.00001, "strict": false, "provenance": "TestApexMapMethods and TestApexMethod upstream assert_allclose(rtol=1e-5, atol=1e-5); not a physical accuracy bound"},
+      "cases": [
+        {"id": "geo-to-modified-apex", "operation": "geo2apex", "epoch_decimal_year": 2000, "refh_km": 300, "args": [60, 15, 100], "input_frame": "WGS84_geodetic_degree_degree_km", "expected": [55.94841766357422, 94.10684204101562], "units": ["degree", "degree"]},
+        {"id": "modified-apex-to-geo", "operation": "apex2geo", "epoch_decimal_year": 2000, "refh_km": 300, "args": [60, 15, 100], "input_frame": "modified_apex_degree_degree_geodetic_height_km", "expected": [51.476322174072266, -66.22817993164062, 0.000005727287771151168], "units": ["degree", "degree", "angular_residual_degree"]},
+        {"id": "map-high", "operation": "map_to_height", "epoch_decimal_year": 2000, "refh_km": 300, "args": [60, 15, 100, 10000], "expected": [31.841466903686523, 17.916635513305664, 0.0000017075473124350538], "units": ["degree", "degree", "angular_residual_degree"]},
+        {"id": "map-mid", "operation": "map_to_height", "epoch_decimal_year": 2000, "refh_km": 300, "args": [30, 170, 100, 500, false, 0.01], "expected": [25.727270126342773, 169.60546875, 0.00017573432705830783], "units": ["degree", "degree", "angular_residual_degree"]},
+        {"id": "map-conjugate-high", "operation": "map_to_height", "epoch_decimal_year": 2000, "refh_km": 300, "args": [60, 15, 100, 10000, true], "expected": [-25.424888610839844, 27.310426712036133, 0.0000012074182222931995], "units": ["degree", "degree", "angular_residual_degree"]},
+        {"id": "map-conjugate-mid", "operation": "map_to_height", "epoch_decimal_year": 2000, "refh_km": 300, "args": [30, 170, 100, 500, true, 0.01], "expected": [-13.76642894744873, 164.24259948730469, 0.0005682079936377704], "units": ["degree", "degree", "angular_residual_degree"]},
+        {"id": "map-same-height", "operation": "map_to_height", "epoch_decimal_year": 2000, "refh_km": 300, "args": [60, 15, 100, 100, false, 0.0000000001], "expected": [60, 15.000003814697266, 0], "units": ["degree", "degree", "angular_residual_degree"]}
+      ]
+    }
+  },
+  "production_bridge": {
+    "scope": "same_native_library_API_bridge_not_independent_reference",
+    "input_frame": "WGS84_geodetic_degree_degree_km",
+    "apex_refh_km": 0,
+    "target_model_height_km": 0,
+    "tolerance": {"rtol": 0, "atol": 0.0000001, "strict": false, "provenance": "frozen production/native API plumbing tolerance; not model accuracy or cross-device tolerance"},
+    "cases": [
+      {"id": "epoch-2014", "utc": "2014-03-22T03:11:00+00:00", "position": [45.5, -23.5, 1135], "orbit_error": 0},
+      {"id": "epoch-2018", "utc": "2018-01-01T00:00:00+00:00", "position": [60, 15, 300], "orbit_error": 0},
+      {"id": "leap-west-dateline", "utc": "2000-02-29T12:34:56+00:00", "position": [60, -180, 300], "orbit_error": 0},
+      {"id": "leap-east-dateline", "utc": "2000-02-29T12:34:56+00:00", "position": [60, 180, 300], "orbit_error": 0},
+      {"id": "invalid-orbit", "utc": "2018-01-01T00:00:00+00:00", "position": [60, 15, 300], "orbit_error": 6},
+      {"id": "aacgm-undefined-equator", "backend": "aacgmv2", "utc": "2018-01-01T00:00:00+00:00", "position": [0, 0, 0], "orbit_error": 0, "expected_error": 1},
+      {"id": "aacgm-high-altitude-fallback", "backend": "aacgmv2", "utc": "2014-03-22T03:11:00+00:00", "position": [45.5, -23.5, 5500], "orbit_error": 0}
+    ]
+  }
+}

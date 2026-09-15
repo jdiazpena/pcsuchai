@@ -1,0 +1,46 @@
+{
+  "experiment_schema_version": 1,
+  "name": "local-scaling-functional-not-controlled-Pi-performance",
+  "kind": "scaling",
+  "sessions": 1,
+  "workload": {
+    "measurements": "data/raw/langmuir-2018-2.csv",
+    "tle": "data/tle/suchai1.tle",
+    "eop": "data/eop/finals2000A.all",
+    "pairs": ["skyfield-apexpy"],
+    "selection": {"method": "spread", "sizes": [6, 100]},
+    "plot_profiles": [
+      {"name": "minimal", "config": null},
+      {"name": "archive-full", "config": "configs/plots/archive-full.json"}
+    ]
+  },
+  "execution": {
+    "process_mode": "fresh",
+    "stop": {"kind": "attempts_per_pair", "value": 1},
+    "warmups": 0,
+    "seed": 1729,
+    "ordering": "balanced",
+    "cache_state": "warmed_os_cache",
+    "threads": "one",
+    "affinity": null,
+    "timeout_seconds": 7200,
+    "failure_policy": "stop",
+    "max_consecutive_failures": 3
+  },
+  "thermal": {"mode": "uncontrolled", "policy": null, "maximum_temperature_c": null, "threshold_action": "stop"},
+  "observation": {
+    "levels": ["normal"],
+    "stage_interval_seconds": 0.05,
+    "board_interval_seconds": 2,
+    "native_memory_interval_seconds": 10,
+    "counter_groups": [],
+    "minimum_counter_coverage_percent": 95
+  },
+  "retention": {
+    "mode": "all_raw_immutable",
+    "compression": "verified_gzip_and_npz",
+    "minimum_free_bytes": 1000000000,
+    "flush_interval_seconds": 1
+  },
+  "validation": {"require_full_certificate": true, "allow_version_drift": false}
+}

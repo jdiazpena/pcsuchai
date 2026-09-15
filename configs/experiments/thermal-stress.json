@@ -1,0 +1,41 @@
+{
+  "experiment_schema_version": 1,
+  "name": "thermal-stress-firmware-protected",
+  "kind": "sustained",
+  "sessions": 1,
+  "workload": {
+    "measurements": "data/raw/langmuir-2018-2.csv",
+    "tle": "data/tle/suchai1.tle",
+    "eop": "data/eop/finals2000A.all",
+    "pairs": ["astropy-apexpy"],
+    "selection": {"method": "full", "sizes": [null]},
+    "plot_profiles": [{"name": "archive-full", "config": "configs/plots/archive-full.json"}]
+  },
+  "execution": {
+    "process_mode": "fresh",
+    "stop": {"kind": "duration_per_pair_seconds", "value": 14400},
+    "warmups": 1,
+    "seed": 1729,
+    "ordering": "scenario_blocks",
+    "cache_state": "warmed_os_cache",
+    "threads": "one",
+    "affinity": null,
+    "timeout_seconds": 7200,
+    "failure_policy": "stop",
+    "max_consecutive_failures": 3
+  },
+  "thermal": {
+    "mode": "stable_before_block",
+    "policy": {"baseline_seconds": 60, "stable_seconds": 60, "tolerance_c": 2,
+               "maximum_slope_c_per_minute": 0.2, "timeout_seconds": 600, "sample_interval_seconds": 5},
+    "maximum_temperature_c": null,
+    "require_temperature_sensor": true,
+    "threshold_action": "stop"
+  },
+  "observation": {"levels": ["normal"], "stage_interval_seconds": 0.05,
+                  "board_interval_seconds": 2, "native_memory_interval_seconds": 10,
+                  "counter_groups": [], "minimum_counter_coverage_percent": 95},
+  "retention": {"mode": "all_raw_immutable", "compression": "verified_gzip_and_npz",
+                "minimum_free_bytes": 1000000000, "flush_interval_seconds": 1},
+  "validation": {"require_full_certificate": true, "allow_version_drift": false}
+}

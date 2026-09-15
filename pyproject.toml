@@ -25,7 +25,7 @@ orbit-astropy = ["astropy>=7.2.2", "sgp4>=2.24"]
 orbit-skyfield = ["skyfield>=1.49", "sgp4>=2.24"]
 magnetic-aacgm = ["aacgmv2>=2.7"]
 magnetic-apex = ["apexpy>=2.1.1"]
-benchmark = ["psutil>=7"]
+benchmark = ["psutil>=7", "threadpoolctl>=3.6"]
 test = ["pytest>=8"]
 local = [
   "astropy>=7.2.2",
@@ -34,6 +34,7 @@ local = [
   "aacgmv2>=2.7",
   "apexpy>=2.1.1",
   "psutil>=7",
+  "threadpoolctl>=3.6",
   "pytest>=8",
 ]
 
@@ -48,7 +49,7 @@ Documentation = "https://github.com/jdiazpena/pcsuchai/tree/main/docs"
 where = ["src"]
 
 [tool.setuptools.package-data]
-pcsuchai = ["assets/*.npz", "assets/*.md"]
+pcsuchai = ["assets/*.npz", "assets/*.md", "assets/*.json"]
 
 [tool.pytest.ini_options]
 addopts = "-ra"

@@ -31,7 +31,6 @@ installation time, import time, and swap activity must be tested explicitly.
 
 - Power-supply model and rated output.
 - Cooling configuration.
-- Approximate ambient temperature.
 - MicroSD make and model.
 - Network mode used during benchmarks.
 

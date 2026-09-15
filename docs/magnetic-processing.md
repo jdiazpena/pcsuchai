@@ -26,6 +26,29 @@ height. AACGMv2 performs an AACGM-to-geographic conversion at zero height;
 ApexPy follows the field line with `map_to_height`. These are useful comparable
 products, but are not asserted to be mathematically identical.
 
+The height convention also differs: AACGM's inverse conversion at input
+height zero targets its 6371.2 km geocentric reference sphere, then returns
+geodetic coordinates and altitude. It does **not** necessarily return zero
+geodetic altitude. This follows the
+[AACGM 2.7.0 conversion implementation](https://github.com/aburrell/aacgmv2/blob/v2.7.0/c_aacgmv2/src/aacgmlib_v2.c#L901).
+The returned altitude is retained as `surface_altitude_km` in raw arrays and
+`surface_geodetic_altitude_km` in the CSV. ApexPy's target is zero geodetic
+height. `mapping_error_deg` records ApexPy's angular mapping residual; it is
+NaN (unavailable), not an altitude or a fabricated zero, for AACGMv2. Earlier
+outputs incorrectly placed AACGM's altitude in that angular-error field.
+
+Each production conversion now checks complete row lengths, explicit invalid
+NaNs and error-code propagation, latitude/longitude ranges, MLT in `[0,24)`,
+the backend's coordinate-system name, and its altitude/residual unit contract.
+AACGM's returned altitude is checked against a generous reference-sphere
+diagnostic bound; this is not a measure of mapping accuracy. These invariants
+do not establish absolute model accuracy or equality between the two models.
+Full-code validation additionally requires version-pinned upstream regression
+cases and separately labelled production/native API bridges for each model.
+All acquired values and numerical bits are retained; these are software
+regressions, not independent physical truth. See
+[magnetic reference acceptance](magnetic-reference-validation.md).
+
 ## Commands
 
 Run one complete backend pipeline without benchmarking:

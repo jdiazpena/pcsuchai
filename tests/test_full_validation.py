@@ -23,6 +23,9 @@ def test_complete_workload_certificate_covers_all_backend_combinations(tmp_path:
     assert result["status"] == "pass"
     assert result["official_eligible"] is False
     assert result["full_code_workload"] is False
+    assert result["validation_contract_version"] == 2 and len(result["criteria"]) == 15
+    assert result["criteria"]["magnetic_reference_cases:aacgmv2"]["passed"]
+    assert result["criteria"]["magnetic_reference_cases:apexpy"]["passed"]
     assert set(result["pipelines"]) == {
         "astropy-aacgmv2", "astropy-apexpy", "skyfield-aacgmv2", "skyfield-apexpy"
     }
@@ -32,6 +35,8 @@ def test_complete_workload_certificate_covers_all_backend_combinations(tmp_path:
         and pipeline["criteria"]["all_configured_plots"]
         for pipeline in result["pipelines"].values()
     )
+    assert all(pipeline["image_validation"]["passed"] for pipeline in result["pipelines"].values())
+    assert all(len(pipeline["image_validation"]["images"]) == 5 for pipeline in result["pipelines"].values())
     verification = verify_validation_certificate(
         result["certificate_path"], ROOT,
         ROOT / "data/raw/langmuir-2018-2.csv",

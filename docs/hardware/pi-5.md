@@ -31,7 +31,6 @@ benchmarks.
 
 - Power-supply model and rated output.
 - Cooling configuration.
-- Approximate ambient temperature.
 - MicroSD make and model.
 - Network mode used during benchmarks.
 

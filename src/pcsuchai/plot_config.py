@@ -149,9 +149,13 @@ class PlotSelection:
 
 
 def load_plot_specs(path: str | Path) -> tuple[PlotSpec, ...]:
-    """Load a JSON plot profile containing a non-empty ``plots`` list."""
+    """Load a plain/gzip JSON profile containing a non-empty ``plots`` list."""
 
-    document = json.loads(Path(path).read_text(encoding="utf-8"))
+    import gzip
+    source = Path(path)
+    opener = gzip.open if source.suffix == ".gz" else open
+    with opener(source, "rt", encoding="utf-8") as handle:
+        document = json.load(handle)
     if set(document) != {"plots"} or not isinstance(document["plots"], list):
         raise ValueError("plot configuration must contain only a 'plots' list")
     specs = tuple(PlotSpec.from_dict(item) for item in document["plots"])

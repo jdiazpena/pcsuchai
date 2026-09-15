@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from bisect import bisect_left
+import gzip
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -53,12 +54,14 @@ def parse_tle_epoch(field: str) -> datetime:
 
 
 def load_tle_history(path: str | Path) -> tuple[TLERecord, ...]:
-    """Load, validate, and chronologically sort a two-line TLE history."""
+    """Load, validate and sort a plain history or byte-exact gzip snapshot."""
 
     source = Path(path)
     if not source.is_file():
         raise DataValidationError(f"TLE file does not exist: {source}")
-    lines = [line.rstrip("\r\n") for line in source.read_text(encoding="ascii").splitlines() if line.strip()]
+    opener = gzip.open if source.suffix == ".gz" else open
+    with opener(source, "rt", encoding="ascii") as handle:
+        lines = [line.rstrip("\r\n") for line in handle if line.strip()]
     if len(lines) % 2:
         raise DataValidationError("TLE history contains an unmatched line")
 

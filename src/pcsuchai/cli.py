@@ -5,10 +5,10 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import json
+import sys
 from pathlib import Path
 
 from .errors import PCSException
-from .pipeline import run_analysis
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -24,6 +24,10 @@ def _parser() -> argparse.ArgumentParser:
         "--magnetic-backend", choices=("none", "aacgmv2", "apexpy"), default="none"
     )
     analyze.add_argument("--limit", type=int, default=None, help="process only the first N rows")
+    analyze.add_argument("--selection-method", choices=("full", "prefix", "spread"), default="prefix")
+    analyze.add_argument("--observation-level", choices=("minimal", "normal", "detailed"), default="normal")
+    analyze.add_argument("--stage-interval-seconds", type=float, default=0.05)
+    analyze.add_argument("--native-memory-interval-seconds", type=float, default=10.0)
     analyze.add_argument("--particle-threshold", type=float, default=0.0)
     analyze.add_argument(
         "--plot-config", type=Path, default=None,
@@ -82,11 +86,15 @@ def _parser() -> argparse.ArgumentParser:
     suite.add_argument("--repeats", type=int, default=None)
     suite.add_argument(
         "--duration-seconds", type=float, default=None,
-        help="run complete randomized rounds until this active duration is reached",
+        help="stop starting attempts at the measured deadline; finish the active job",
     )
     suite.add_argument("--warmups", type=int, default=1)
     suite.add_argument("--seed", type=int, default=1729)
     suite.add_argument("--limit", type=int, default=None)
+    suite.add_argument("--selection-method", choices=("full", "prefix", "spread"), default="prefix")
+    suite.add_argument("--observation-level", choices=("minimal", "normal", "detailed"), default="normal")
+    suite.add_argument("--stage-interval-seconds", type=float, default=0.05)
+    suite.add_argument("--native-memory-interval-seconds", type=float, default=10.0)
     suite.add_argument("--cooldown-seconds", type=float, default=0.0)
     suite.add_argument("--cooldown-until-c", type=float, default=None)
     suite.add_argument("--cooldown-max-seconds", type=float, default=600.0)
@@ -103,6 +111,11 @@ def _parser() -> argparse.ArgumentParser:
     suite.add_argument("--continue-on-error", action="store_true")
     suite.add_argument("--max-consecutive-failures", type=int, default=3)
     suite.add_argument("--resume", action="store_true", help="continue the exact checkpoint in output-dir")
+    suite.add_argument("--thermal-policy", type=Path, default=None, help="JSON stable-recovery policy using the built-in sensor")
+    suite.add_argument("--ordering", choices=("randomized", "balanced"), default="randomized")
+    suite.add_argument("--session-index", type=int, default=1)
+    suite.add_argument("--thread-policy", choices=("one", "stock"), default="stock")
+    suite.add_argument("--process-mode", choices=("fresh", "persistent"), default="fresh")
     preflight = commands.add_parser("preflight", help="verify a machine before benchmarking")
     preflight.add_argument("--project-root", type=Path, default=Path("."))
     preflight.add_argument("--output-dir", type=Path, default=Path("outputs/preflight-probe"))
@@ -166,6 +179,22 @@ def main(argv: list[str] | None = None) -> int:
     """Run the requested command and convert expected failures to clean errors."""
 
     arguments = _parser().parse_args(argv)
+    from .run_lock import DeviceBusyError, device_run_lock
+
+    measured_commands = {"benchmark-suite", "benchmark-orbits", "validate-full", "validate-orbits", "validate-magnetic", "preflight"}
+    if arguments.command in measured_commands or (arguments.command == "analyze" and arguments.benchmark):
+        try:
+            with device_run_lock():
+                return _dispatch(arguments)
+        except DeviceBusyError as exc:
+            print(str(exc), file=sys.stderr)
+            return 2
+    return _dispatch(arguments)
+
+
+def _dispatch(arguments: argparse.Namespace) -> int:
+    """Execute parsed options; the public entry point owns the device run lock."""
+
     if arguments.command == "capabilities":
         print(json.dumps(_capabilities(), indent=2))
         return 0
@@ -287,6 +316,15 @@ def main(argv: list[str] | None = None) -> int:
             continue_on_error=arguments.continue_on_error,
             max_consecutive_failures=arguments.max_consecutive_failures,
             resume=arguments.resume,
+            thermal_policy=(json.loads(arguments.thermal_policy.read_text()) if arguments.thermal_policy else None),
+            ordering=arguments.ordering,
+            session_index=arguments.session_index,
+            thread_policy=arguments.thread_policy,
+            process_mode=arguments.process_mode,
+            selection_method=arguments.selection_method,
+            observation_level=arguments.observation_level,
+            stage_interval_seconds=arguments.stage_interval_seconds,
+            native_memory_interval_seconds=arguments.native_memory_interval_seconds,
         )
         summary = {
             "report_path": result["report_path"],
@@ -296,6 +334,7 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(summary, indent=2))
         return 0 if result["status"] == "complete" and result["scientific_outputs_consistent"] else 2
     try:
+        from .pipeline import run_analysis
         outputs = run_analysis(
             measurement_path=arguments.measurements,
             tle_path=arguments.tle,
@@ -307,6 +346,10 @@ def main(argv: list[str] | None = None) -> int:
             particle_threshold=arguments.particle_threshold,
             plot_config_path=arguments.plot_config,
             benchmark=arguments.benchmark,
+            selection_method=arguments.selection_method,
+            observation_level=arguments.observation_level,
+            stage_interval_seconds=arguments.stage_interval_seconds,
+            native_memory_interval_seconds=arguments.native_memory_interval_seconds,
         )
     except (PCSException, ValueError) as exc:
         _parser().error(str(exc))

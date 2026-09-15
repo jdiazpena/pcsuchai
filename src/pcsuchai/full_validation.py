@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import gzip
 import sys
 from dataclasses import fields
 from datetime import datetime, timezone
@@ -20,6 +21,8 @@ from .plot_config import load_plot_specs, select_plot_data
 from .symh import load_symh, plot_symh
 from .tle import audit_tle_history
 from .validation import validate_magnetic_backends, validate_orbit_backends
+from .run_lock import serialized_run
+from .magnetic.references import validate_magnetic_reference_cases
 
 
 def _artifact(path: str | Path) -> dict:
@@ -62,6 +65,7 @@ def _validate_raw_retention(outputs, measurements, plot_specs) -> bool:
     return True
 
 
+@serialized_run
 def run_full_validation(
     output_dir: str | Path,
     project_root: str | Path,
@@ -77,6 +81,11 @@ def run_full_validation(
     destination = Path(output_dir).resolve()
     root = Path(project_root).resolve()
     destination.mkdir(parents=True, exist_ok=True)
+    reserved = ("orbit", "magnetic", "pipelines", "external", "full-validation-certificate.json")
+    if any((destination / name).exists() or (destination / name).is_symlink() for name in reserved):
+        raise FileExistsError(f"validation evidence already exists; use a new dated directory: {destination}")
+    reference_dir = destination / "magnetic" / "reference-cases"
+    reference_dir.mkdir(parents=True, exist_ok=False)
     measurements_file = Path(measurements_path)
     tle_file = Path(tle_path)
     eop_file = Path(eop_path)
@@ -96,6 +105,20 @@ def run_full_validation(
     criteria["trusted_measurement_integrity"] = _criterion(
         measurement_audit["status"] == "pass", measurement_audit["status"]
     )
+
+    print("[full-validation] checking published magnetic regressions and production API bridges", file=sys.stderr, flush=True)
+    magnetic_references = {}
+    for backend in ("aacgmv2", "apexpy"):
+        result = validate_magnetic_reference_cases(backend)
+        filename = reference_dir / f"{backend}.json.gz"
+        with gzip.open(filename, "xt", encoding="utf-8") as stream:
+            json.dump(result, stream, indent=2, allow_nan=False)
+            stream.write("\n")
+        magnetic_references[backend] = _artifact(filename)
+        criteria[f"magnetic_reference_cases:{backend}"] = _criterion(result["status"] == "pass", {
+            "status": result["status"], "published_anchor_count": len(result["anchors"]),
+            "production_bridge_count": len(result["production_bridges"]), "scope": result["scope"],
+        })
 
     orbit_dir = destination / "orbit"
     print("[full-validation] validating Astropy and Skyfield orbit paths", file=sys.stderr, flush=True)
@@ -179,6 +202,16 @@ def run_full_validation(
                 and artifacts["raw_benchmark_samples"]["size_bytes"] > 0
                 and _validate_raw_retention(outputs, measurements, plot_specs)
             )
+            from .product_validation import validate_pipeline_images
+            image_validation = validate_pipeline_images(manifest, outputs.raw_products_npz, outputs.plot_selection_files)
+            plots_passed = plots_passed and image_validation["passed"]
+            from .saved_plot_validation import validate_saved_selections
+            from .scientific_comparison import _read_npz
+            analysis_validation = validate_saved_selections(
+                _read_npz(outputs.raw_products_npz), measurements, plot_specs, manifest,
+                list(outputs.plot_selection_files),
+            )
+            plots_passed = plots_passed and analysis_validation["passed"]
             expected_magnetic_minimum = (
                 len(measurements) if magnetic_backend == "apexpy"
                 else int(np.floor(0.95 * len(measurements)))
@@ -189,10 +222,13 @@ def run_full_validation(
             )
             pipelines[name] = {
                 "manifest": manifest, "stage_order": stage_names, "artifacts": artifacts,
+                "image_validation": image_validation,
+                "analysis_validation": analysis_validation,
                 "criteria": {
                     "single_process_order": order_passed,
                     "all_required_stages": stage_passed,
                     "all_configured_plots": plots_passed,
+                    "analysis_metadata_and_selections": analysis_validation["passed"],
                     "valid_scientific_positions": validity_passed,
                     "raw_data_retained": retention_passed,
                 },
@@ -236,7 +272,7 @@ def run_full_validation(
     )
     official_eligible = status == "pass" and limit is None and canonical_plot_match
     report = {
-        "schema_version": 1, "certificate_type": "pcsuchai-full-code-validation",
+        "schema_version": 1, "validation_contract_version": 2, "certificate_type": "pcsuchai-full-code-validation",
         "created_utc": datetime.now(timezone.utc).isoformat(), "status": status,
         "full_code_workload": official_eligible,
         "official_eligible": official_eligible,
@@ -251,6 +287,7 @@ def run_full_validation(
         "tle_audit": tle_audit, "eop_audit": eop_audit,
         "sgp4_reference_vector": sgp4_reference, "orbit_validation": orbit_validation,
         "magnetic_validations": magnetic_validations, "pipelines": pipelines,
+        "magnetic_reference_cases": magnetic_references,
         "symh": symh_result,
     }
     certificate_path = destination / "full-validation-certificate.json"
@@ -271,24 +308,49 @@ def verify_validation_certificate(
 ) -> dict:
     """Require a passing certificate for the exact code, inputs, and runtime."""
 
-    certificate = json.loads(Path(certificate_path).read_text(encoding="utf-8"))
+    from .saved_attempts import _json
+    try:
+        certificate = _json(Path(certificate_path))
+    except (OSError, ValueError) as exc:
+        return {"passed": False, "checks": {"readable_strict_certificate": False},
+                "certificate": str(certificate_path), "error": f"{type(exc).__name__}: {exc}"}
+    for name in ("source", "runtime", "settings", "inputs", "criteria"):
+        if not isinstance(certificate.get(name), dict):
+            return {"passed": False, "checks": {f"certificate_object:{name}": False}, "certificate": str(certificate_path)}
     current_runtime = runtime_metadata()
+    current_source = _source_digest(Path(project_root).resolve())
     expected_inputs = {
         "measurements": sha256_file(measurements), "tle": sha256_file(tle),
         "eop": sha256_file(eop), "plot_config": sha256_file(plot_config),
     }
     checks = {
+        "schema_version": certificate.get("schema_version") == 1,
         "certificate_type": certificate.get("certificate_type") == "pcsuchai-full-code-validation",
         "status": certificate.get("status") == "pass",
         "full_code_workload": certificate.get("full_code_workload") is True,
-        "source": certificate.get("source", {}).get("sha256") == _source_digest(Path(project_root).resolve())["sha256"],
+        "official_eligible": certificate.get("official_eligible") is True,
+        "source": certificate["source"] == current_source,
         "python_version": certificate.get("runtime", {}).get("python_version") == current_runtime["python_version"],
         "packages": certificate.get("runtime", {}).get("packages") == current_runtime["packages"],
         "limit": certificate.get("settings", {}).get("limit") == limit,
         "plot_count": certificate.get("settings", {}).get("plot_count") == len(load_plot_specs(plot_config)),
         **{
-            f"input:{name}": certificate.get("inputs", {}).get(name, {}).get("sha256") == digest
+            f"input:{name}": isinstance(certificate["inputs"].get(name), dict)
+                             and certificate["inputs"][name].get("sha256") == digest
+                             and certificate["inputs"][name].get("size_bytes") == Path({
+                                 "measurements": measurements, "tle": tle, "eop": eop, "plot_config": plot_config}[name]).stat().st_size
             for name, digest in expected_inputs.items()
         },
     }
-    return {"passed": all(checks.values()), "checks": checks, "certificate": str(certificate_path)}
+    from .portable import PortablePaths
+    from .validation_reference import required_criteria, reference_contract_version, verify_certificate_artifacts
+    criteria = certificate["criteria"]
+    checks["validation_contract_version"] = certificate.get("validation_contract_version", 1) == reference_contract_version(current_source)
+    checks["all_required_criteria"] = required_criteria(current_source) <= criteria.keys()
+    checks["all_recorded_criteria_pass"] = bool(criteria) and all(
+        isinstance(value, dict) and value.get("passed") is True for value in criteria.values())
+    artifacts = verify_certificate_artifacts(certificate, PortablePaths(Path(certificate_path).resolve().parent))
+    checks["retained_pipeline_artifacts"] = artifacts["passed"]
+    return {"passed": all(checks.values()), "checks": checks, "certificate": str(certificate_path),
+            "artifact_checks": {pair: {"passed": value["passed"], "error": value.get("error")}
+                                for pair, value in artifacts.get("pipelines", {}).items()}}

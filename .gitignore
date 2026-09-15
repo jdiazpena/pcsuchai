@@ -3,6 +3,7 @@ archive/
 outputs/*
 !outputs/.gitkeep
 installation-reports/
+operation-costs/
 
 # Include the canonical SUCHAI-1 input; keep unrelated local data out of Git.
 data/raw/*

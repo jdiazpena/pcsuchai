@@ -59,7 +59,7 @@ def _country_border_lines() -> tuple[np.ndarray, ...]:
         )
 
 
-def _decorate_geographic_axes(axes, extent=(-180.0, 180.0, -90.0, 90.0)) -> None:
+def _decorate_geographic_axes(axes, extent=(-180.0, 180.0, -90.0, 90.0)) -> dict:
     """Add offline continent context and a geographic graticule."""
 
     from matplotlib.collections import LineCollection, PolyCollection
@@ -79,6 +79,24 @@ def _decorate_geographic_axes(axes, extent=(-180.0, 180.0, -90.0, 90.0)) -> None
     axes.set_xticks(np.arange(-180, 181, 30))
     axes.set_yticks(np.arange(-90, 91, 30))
     axes.grid(alpha=0.3, linewidth=0.5, zorder=1)
+    return {"source": "bundled Natural Earth 110m", "land_parts": len(land.get_paths()),
+            "border_segments": len(borders.get_segments()), "extent_deg": list(extent)}
+
+
+def _finish_colour_scale(figure, axes, scatter, label: str, has_points: bool) -> None:
+    """Add a data-derived colour bar, or clearly label an empty selection.
+
+    Empty selections are valid outcomes of unchanged scientific filters. Do
+    not invent a 0–1 colour scale or silently omit the requested image.
+    """
+
+    if has_points:
+        colorbar = figure.colorbar(scatter, ax=axes, pad=0.02)
+        colorbar.set_label(label)
+    else:
+        axes.text(0.5, 0.5, "No observations match these filters", transform=axes.transAxes,
+                  ha="center", va="center", zorder=3,
+                  bbox={"facecolor": "white", "alpha": 0.85, "edgecolor": "none"})
 
 
 def plot_particle_map(
@@ -107,11 +125,9 @@ def plot_particle_map(
         & np.isfinite(particle_counts)
         & (particle_counts >= threshold)
     )
-    if not np.any(valid):
-        raise ValueError("no valid observations remain after particle filtering")
 
     figure, axes = plt.subplots(figsize=(width_px / dpi, height_px / dpi), dpi=dpi)
-    _decorate_geographic_axes(axes)
+    geographic_context = _decorate_geographic_axes(axes)
     scatter = axes.scatter(
         orbit.longitude_deg[valid],
         orbit.latitude_deg[valid],
@@ -126,8 +142,7 @@ def plot_particle_map(
     )
     axes.set(xlabel="Geographic longitude (°)", ylabel="Geographic latitude (°)")
     axes.set_title(f"SUCHAI-1 particle counts — {orbit.backend} orbit — n={int(valid.sum()):,}")
-    colorbar = figure.colorbar(scatter, ax=axes, pad=0.02)
-    colorbar.set_label("Particle counter")
+    _finish_colour_scale(figure, axes, scatter, "Particle counter", bool(np.any(valid)))
     figure.tight_layout()
     destination.parent.mkdir(parents=True, exist_ok=True)
     figure.savefig(destination, dpi=dpi, format="png", metadata={"Software": "pcsuchai"})
@@ -138,7 +153,10 @@ def plot_particle_map(
         "width_px": width_px,
         "height_px": height_px,
         "points_rendered": int(valid.sum()),
+        "data_status": "available" if np.any(valid) else "empty_selection",
         "threshold": float(threshold),
+        "geographic_context": geographic_context,
+        "rendering": {"projection": "longitude_latitude_rectangular", "filled_markers": True, "dpi": dpi, "cmap": "plasma"},
         "size_bytes": destination.stat().st_size,
     }
 
@@ -165,8 +183,6 @@ def plot_magnetic_particle_map(
         & np.isfinite(particle_counts)
         & (particle_counts >= threshold)
     )
-    if not np.any(valid):
-        raise ValueError("no valid magnetic observations remain after particle filtering")
 
     figure, axes = plt.subplots(figsize=(width_px / dpi, height_px / dpi), dpi=dpi)
     scatter = axes.scatter(
@@ -183,8 +199,7 @@ def plot_magnetic_particle_map(
     axes.set_yticks(np.arange(-90, 91, 30))
     axes.grid(alpha=0.3, linewidth=0.5)
     axes.set_title(f"SUCHAI-1 particle counts — {magnetic.backend} — n={int(valid.sum()):,}")
-    colorbar = figure.colorbar(scatter, ax=axes, pad=0.02)
-    colorbar.set_label("Particle counter")
+    _finish_colour_scale(figure, axes, scatter, "Particle counter", bool(np.any(valid)))
     figure.tight_layout()
     destination.parent.mkdir(parents=True, exist_ok=True)
     figure.savefig(destination, dpi=dpi, format="png", metadata={"Software": "pcsuchai"})
@@ -192,8 +207,10 @@ def plot_magnetic_particle_map(
     return {
         "path": str(destination), "format": "png", "width_px": width_px,
         "height_px": height_px, "points_rendered": int(valid.sum()),
+        "data_status": "available" if np.any(valid) else "empty_selection",
         "threshold": float(threshold), "size_bytes": destination.stat().st_size,
         "coordinate_system": magnetic.coordinate_system,
+        "rendering": {"projection": "native_magnetic_rectangular", "filled_markers": True, "dpi": dpi, "cmap": "plasma"},
     }
 
 
@@ -219,11 +236,9 @@ def plot_footpoint_particle_map(
         & np.isfinite(particle_counts)
         & (particle_counts >= threshold)
     )
-    if not np.any(valid):
-        raise ValueError("no valid footpoints remain after particle filtering")
 
     figure, axes = plt.subplots(figsize=(width_px / dpi, height_px / dpi), dpi=dpi)
-    _decorate_geographic_axes(axes)
+    geographic_context = _decorate_geographic_axes(axes)
     scatter = axes.scatter(
         magnetic.surface_longitude_deg[valid], magnetic.surface_latitude_deg[valid],
         c=particle_counts[valid], s=20, marker="o", cmap="plasma",
@@ -236,8 +251,7 @@ def plot_footpoint_particle_map(
     axes.set_title(
         f"SUCHAI-1 particle counts — {magnetic.backend} surface mapping — n={int(valid.sum()):,}"
     )
-    colorbar = figure.colorbar(scatter, ax=axes, pad=0.02)
-    colorbar.set_label("Particle counter")
+    _finish_colour_scale(figure, axes, scatter, "Particle counter", bool(np.any(valid)))
     figure.tight_layout()
     destination.parent.mkdir(parents=True, exist_ok=True)
     figure.savefig(destination, dpi=dpi, format="png", metadata={"Software": "pcsuchai"})
@@ -245,8 +259,11 @@ def plot_footpoint_particle_map(
     return {
         "path": str(destination), "format": "png", "width_px": width_px,
         "height_px": height_px, "points_rendered": int(valid.sum()),
+        "data_status": "available" if np.any(valid) else "empty_selection",
         "threshold": float(threshold), "size_bytes": destination.stat().st_size,
         "magnetic_backend": magnetic.backend, "coordinate_system": "geographic_footpoint",
+        "geographic_context": geographic_context,
+        "rendering": {"projection": "longitude_latitude_rectangular", "filled_markers": True, "dpi": dpi, "cmap": "plasma"},
     }
 
 
@@ -262,8 +279,6 @@ def plot_configured_map(
     import matplotlib.pyplot as plt
 
     mask = selection.mask
-    if not np.any(mask):
-        raise ValueError(f"plot '{spec.name}' has no observations after filtering")
     colour = selection.values[mask]
     colour_label = selection.value_label
     if selection.scale == "log10":
@@ -273,9 +288,10 @@ def plot_configured_map(
     figure, axes = plt.subplots(
         figsize=(spec.width_px / spec.dpi, spec.height_px / spec.dpi), dpi=spec.dpi
     )
+    geographic_context = None
     if spec.coordinate_view in ("geographic", "footpoint"):
         extent = spec.extent or (-180.0, 180.0, -90.0, 90.0)
-        _decorate_geographic_axes(axes, extent)
+        geographic_context = _decorate_geographic_axes(axes, extent)
     else:
         extent = spec.extent or (-180.0, 180.0, -90.0, 90.0)
         axes.set(xlim=extent[:2], ylim=extent[2:])
@@ -289,8 +305,7 @@ def plot_configured_map(
     )
     axes.set(xlabel=selection.x_label, ylabel=selection.y_label)
     axes.set_title(spec.title or f"{spec.name.replace('_', ' ')} — n={int(mask.sum()):,}")
-    colorbar = figure.colorbar(scatter, ax=axes, pad=0.02)
-    colorbar.set_label(colour_label)
+    _finish_colour_scale(figure, axes, scatter, colour_label, bool(np.any(mask)))
     figure.tight_layout()
     destination.parent.mkdir(parents=True, exist_ok=True)
     figure.savefig(destination, dpi=spec.dpi, format="png", metadata={"Software": "pcsuchai"})
@@ -298,10 +313,13 @@ def plot_configured_map(
     return {
         "path": str(destination), "format": "png", "width_px": spec.width_px,
         "height_px": spec.height_px, "points_rendered": int(mask.sum()),
+        "data_status": "available" if np.any(mask) else "empty_selection",
         "size_bytes": destination.stat().st_size, "variable": spec.variable,
         "coordinate_view": spec.coordinate_view, "scale": selection.scale,
-        "value_min": float(np.min(selection.values[mask])),
-        "value_max": float(np.max(selection.values[mask])), "spec": plot_spec_metadata(spec),
+        "value_min": float(np.min(selection.values[mask])) if np.any(mask) else None,
+        "value_max": float(np.max(selection.values[mask])) if np.any(mask) else None, "spec": plot_spec_metadata(spec),
+        "geographic_context": geographic_context,
+        "rendering": {"projection": "longitude_latitude_rectangular" if geographic_context else "native_magnetic_rectangular", "filled_markers": True, "dpi": spec.dpi, "cmap": spec.cmap},
     }
 
 
@@ -318,8 +336,6 @@ def plot_time_availability(
     import matplotlib.pyplot as plt
 
     mask = selection.mask
-    if not np.any(mask):
-        raise ValueError(f"plot '{spec.name}' has no observations after filtering")
     selected_times = np.asarray(times, dtype=object)[mask]
     figure, axes = plt.subplots(
         figsize=(spec.width_px / spec.dpi, spec.height_px / spec.dpi), dpi=spec.dpi
@@ -328,6 +344,12 @@ def plot_time_availability(
         selected_times, np.ones(int(mask.sum())), s=spec.marker_size, marker="o",
         facecolors="#3a60b8", edgecolors="none", linewidths=0, rasterized=True,
     )
+    if not np.any(mask):
+        axes.text(0.5, 0.5, "No observations match these filters", transform=axes.transAxes,
+                  ha="center", va="center")
+        # Show the observed input interval, not an invented selected interval.
+        if times and min(times) != max(times):
+            axes.set_xlim(min(times), max(times))
     axes.set_yticks([])
     axes.set_xlabel("UTC observation time")
     axes.grid(axis="x", alpha=0.3, linewidth=0.5)
@@ -340,9 +362,11 @@ def plot_time_availability(
     return {
         "path": str(destination), "format": "png", "width_px": spec.width_px,
         "height_px": spec.height_px, "points_rendered": int(mask.sum()),
+        "data_status": "available" if np.any(mask) else "empty_selection",
         "size_bytes": destination.stat().st_size, "variable": spec.variable,
         "coordinate_view": spec.coordinate_view, "plot_type": "time_availability",
-        "first_time_utc": min(selected_times).isoformat(),
-        "last_time_utc": max(selected_times).isoformat(),
+        "first_time_utc": min(selected_times).isoformat() if np.any(mask) else None,
+        "rendering": {"projection": "utc_time_axis", "filled_markers": True, "dpi": spec.dpi},
+        "last_time_utc": max(selected_times).isoformat() if np.any(mask) else None,
         "spec": plot_spec_metadata(spec),
     }

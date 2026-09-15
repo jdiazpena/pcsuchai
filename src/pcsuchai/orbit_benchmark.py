@@ -14,8 +14,10 @@ from pathlib import Path
 
 from .benchmark import runtime_metadata, sha256_file, system_snapshot
 from .benchmark_suite import _source_digest, _statistics
+from .run_lock import inherited_lock_fds, serialized_run
 
 
+@serialized_run
 def run_orbit_benchmark(
     output_dir: str | Path,
     project_root: str | Path,
@@ -71,6 +73,7 @@ def run_orbit_benchmark(
         child = subprocess.run(
             exact, capture_output=True, text=True, timeout=timeout_seconds,
             check=False, env=child_environment,
+            pass_fds=inherited_lock_fds(child_environment),
         )
         elapsed = time.perf_counter() - started
         if child.returncode:

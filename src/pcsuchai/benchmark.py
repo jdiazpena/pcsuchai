@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 import hashlib
 import os
 import platform
@@ -16,6 +17,24 @@ from pathlib import Path
 from datetime import datetime, timezone
 
 
+@dataclass
+class StreamingExtrema:
+    """Keep constant-size extrema/counts while the journal retains all samples."""
+
+    count: int = 0
+    minimum: float | int | None = None
+    maximum: float | int | None = None
+
+    def add(self, value: float | int | None) -> None:
+        """Include an available value; missing measurements never become zero."""
+
+        if value is None:
+            return
+        self.count += 1
+        self.minimum = value if self.minimum is None else min(self.minimum, value)
+        self.maximum = value if self.maximum is None else max(self.maximum, value)
+
+
 def runtime_metadata() -> dict:
     """Describe the interpreter, platform, and scientific package versions."""
 
@@ -24,7 +43,7 @@ def runtime_metadata() -> dict:
     packages = {}
     for name in (
         "pcsuchai", "numpy", "matplotlib", "astropy", "sgp4", "skyfield",
-        "aacgmv2", "apexpy", "psutil",
+        "aacgmv2", "apexpy", "psutil", "threadpoolctl",
     ):
         try:
             packages[name] = version(name)
@@ -62,6 +81,7 @@ def runtime_metadata() -> dict:
         "board_model": board_model,
         "cpu_governor": _cpu_governor(),
         "packages": packages,
+        "launch_observation_declaration": os.environ.get("PCSUCHAI_LAUNCH_OBSERVATION"),
     }
 
 
@@ -90,8 +110,9 @@ def _process_faults() -> tuple[int | None, int | None]:
     """Read this process's Linux minor and major page-fault counters."""
 
     try:
-        fields = Path("/proc/self/stat").read_text().split()
-        return int(fields[9]), int(fields[11])
+        # comm can contain spaces/parentheses; counters follow its final ')'.
+        fields = Path("/proc/self/stat").read_text().rsplit(")", 1)[1].split()
+        return int(fields[7]), int(fields[9])
     except (FileNotFoundError, PermissionError, ValueError, IndexError):
         return None, None
 
@@ -194,15 +215,23 @@ class BenchmarkRecorder:
     def __init__(
         self, enabled: bool, sample_interval: float = 0.05,
         *, sample_path: str | Path | None = None,
+        observation_level: str = "normal", native_memory_interval: float = 10.0,
     ) -> None:
         """Configure summaries plus a mandatory on-disk raw journal when enabled."""
 
-        self.enabled = enabled
+        if observation_level not in ("minimal", "normal", "detailed"):
+            raise ValueError("observation_level must be minimal, normal or detailed")
+        if any(isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value <= 0 for value in (sample_interval, native_memory_interval)):
+            raise ValueError("sample/native-memory intervals must be finite and positive")
+        self.enabled = enabled and observation_level != "minimal"
+        self.observation_level = observation_level
+        self.native_memory_interval = native_memory_interval
         self.sample_interval = sample_interval
         self.results: list[StageMetrics] = []
         self.raw_sample_path: Path | None = None
         self.journal = None
-        if enabled:
+        self.last_native_memory_sample: float | None = None
+        if self.enabled:
             if sample_path is None:
                 raise ValueError("enabled benchmarking requires a raw sample_path")
             if sample_interval <= 0:
@@ -219,6 +248,8 @@ class BenchmarkRecorder:
                 "write_bytes", "read_chars", "write_chars", "voluntary_context_switches",
                 "involuntary_context_switches", "minor_page_faults", "major_page_faults",
                 "throttled", "sample_error",
+                "process_observations_json",
+                "process_details_json",
             ))
 
     @contextmanager
@@ -244,11 +275,12 @@ class BenchmarkRecorder:
         temp_start = _temperature_c()
         started_utc = datetime.now(timezone.utc).isoformat()
         throttle_start = _throttled()
-        samples_rss = [rss_start]
-        samples_temp = [temp_start] if temp_start is not None else []
-        samples_freq: list[float] = []
-        samples_threads = [process.num_threads()]
-        samples_available = [available_start]
+        samples_rss, samples_temp, samples_freq = (StreamingExtrema() for _ in range(3))
+        samples_threads, samples_available = (StreamingExtrema() for _ in range(2))
+        samples_rss.add(rss_start)
+        samples_temp.add(temp_start)
+        samples_threads.add(process.num_threads())
+        samples_available.add(available_start)
         stop = threading.Event()
         sampling_errors: list[Exception] = []
         sample_started = time.perf_counter()
@@ -264,6 +296,22 @@ class BenchmarkRecorder:
                 "process_cpu_seconds": time.process_time(),
                 "sample_interval_seconds": self.sample_interval, "throttled": throttled,
             }
+            from .observations import process_measurements
+            native_now = time.monotonic()
+            native = self.last_native_memory_sample is None or native_now - self.last_native_memory_sample >= self.native_memory_interval
+            if native:
+                self.last_native_memory_sample = native_now
+            row["process_observations_json"] = json.dumps(
+                process_measurements(os.getpid(), scope="worker", native_memory=native),
+                separators=(",", ":"), allow_nan=False,
+            )
+            if self.observation_level == "detailed":
+                from .observations import process_details, measurement
+                details = process_details(os.getpid(), scope="worker") if native else {
+                    "acquisition": measurement(None, unit="snapshot", scope="worker", source="detailed process instrumentation",
+                                               status="not_sampled", reason="declared lower-rate detail acquisition")
+                }
+                row["process_details_json"] = json.dumps(details, separators=(",", ":"), allow_nan=False)
             try:
                 rss = process.memory_info().rss
                 threads = process.num_threads()
@@ -292,13 +340,11 @@ class BenchmarkRecorder:
                     "involuntary_context_switches": context.involuntary,
                     "minor_page_faults": faults[0], "major_page_faults": faults[1],
                 })
-                samples_rss.append(rss)
-                samples_threads.append(threads)
-                samples_available.append(int(memory.available))
-                if current_temp is not None:
-                    samples_temp.append(current_temp)
-                if frequency is not None:
-                    samples_freq.append(float(frequency.current))
+                samples_rss.add(rss)
+                samples_threads.add(threads)
+                samples_available.add(int(memory.available))
+                samples_temp.add(current_temp)
+                samples_freq.add(float(frequency.current) if frequency else None)
             except (psutil.Error, OSError) as exc:
                 row["sample_error"] = f"{type(exc).__name__}: {exc}"
             # Persistence errors deliberately escape: silently losing raw data is invalid.
@@ -315,28 +361,36 @@ class BenchmarkRecorder:
 
         sampler = threading.Thread(target=sample, daemon=True)
         capture("start", throttle_start)
+        sampler.start()
+        # Boundary counters exclude the initial capture and thread creation.
+        # Sampling while the science executes is part of observed stage cost.
+        io_start = process.io_counters() if hasattr(process, "io_counters") else None
+        cpu_times_start = process.cpu_times()
+        context_start = process.num_ctx_switches()
+        faults_start = _process_faults()
+        started_utc = datetime.now(timezone.utc).isoformat()
         cpu_start = time.process_time()
         wall_start = time.perf_counter()
-        sampler.start()
         try:
             yield
         finally:
             wall = time.perf_counter() - wall_start
             cpu = time.process_time() - cpu_start
+            finished_utc = datetime.now(timezone.utc).isoformat()
+            # Read boundary counters before stopping/joining the observer and
+            # writing its final sample; finalization is not stage execution.
+            cpu_times_end = process.cpu_times()
+            io_end = process.io_counters() if hasattr(process, "io_counters") else None
+            context_end = process.num_ctx_switches()
+            faults_end = _process_faults()
             stop.set()
             sampler.join()
             rss_end = process.memory_info().rss
-            samples_rss.append(rss_end)
-            io_end = process.io_counters() if hasattr(process, "io_counters") else None
-            cpu_times_end = process.cpu_times()
-            context_end = process.num_ctx_switches()
-            faults_end = _process_faults()
+            samples_rss.add(rss_end)
             available_end = int(psutil.virtual_memory().available)
-            samples_available.append(available_end)
+            samples_available.add(available_end)
             temp_end = _temperature_c()
-            finished_utc = datetime.now(timezone.utc).isoformat()
-            if temp_end is not None:
-                samples_temp.append(temp_end)
+            samples_temp.add(temp_end)
             throttle_end = _throttled()
             capture("end", throttle_end)
             self.journal.sync()
@@ -352,7 +406,7 @@ class BenchmarkRecorder:
                     process_user_seconds=float(cpu_times_end.user - cpu_times_start.user),
                     process_system_seconds=float(cpu_times_end.system - cpu_times_start.system),
                     cpu_equivalent_percent=100.0 * cpu / wall if wall else 0.0,
-                    peak_rss_bytes=max(samples_rss),
+                    peak_rss_bytes=int(samples_rss.maximum),
                     rss_change_bytes=rss_end - rss_start,
                     read_bytes=(io_end.read_bytes - io_start.read_bytes) if io_start and io_end else None,
                     write_bytes=(io_end.write_bytes - io_start.write_bytes) if io_start and io_end else None,
@@ -378,9 +432,9 @@ class BenchmarkRecorder:
                         faults_end[1] - faults_start[1]
                         if faults_start[1] is not None and faults_end[1] is not None else None
                     ),
-                    peak_threads=max(samples_threads),
+                    peak_threads=int(samples_threads.maximum),
                     available_memory_start_bytes=available_start,
-                    available_memory_min_bytes=min(samples_available),
+                    available_memory_min_bytes=int(samples_available.minimum),
                     available_memory_end_bytes=available_end,
                     load_average_start=load_start,
                     load_average_end=(
@@ -388,10 +442,10 @@ class BenchmarkRecorder:
                         if hasattr(os, "getloadavg") else None
                     ),
                     temperature_start_c=temp_start,
-                    temperature_max_c=max(samples_temp) if samples_temp else None,
+                    temperature_max_c=samples_temp.maximum,
                     temperature_end_c=temp_end,
-                    cpu_frequency_min_mhz=min(samples_freq) if samples_freq else None,
-                    cpu_frequency_max_mhz=max(samples_freq) if samples_freq else None,
+                    cpu_frequency_min_mhz=samples_freq.minimum,
+                    cpu_frequency_max_mhz=samples_freq.maximum,
                     throttled_start=throttle_start,
                     throttled_end=throttle_end,
                 )
