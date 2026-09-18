@@ -171,4 +171,5 @@ INSTALL_STAGE='capabilities and native dependency report'
 "$PYTHON_BIN" -s -m pcsuchai installation-report \
   --apex-wheel "$APEX_WHEEL" \
   --output "$REPORT_DIR/native-${MACHINE}-${PY_TAG}.json"
-printf '\nInstallation complete. Run: scripts/run_quick_check.sh DEVICE_LABEL\n'
+printf '\nInstallation complete. Run the full scientific acceptance gate:\n'
+printf 'python3 scripts/run_experiment.py run --manifest configs/experiments/acceptance.json --device-label DEVICE_LABEL\n'

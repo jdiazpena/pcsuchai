@@ -36,7 +36,7 @@ retained rather than renamed a pass. Pi installation must satisfy the entire
 policy, including the installed project and native imports.
 
 The current executable-source inventory is
-`9a5382940425e6413d7451af14c9b8f541922c023b24d9328292d91444deb1f9`
+`dbd3abe44b776c5e1d77b61abd59cf083ea5343c64c26aec55e298ae8b34a5b1`
 (120 files). Root documentation/tests are outside that scientific inventory;
 the Git commit and release archive additionally bind those files. Earlier
 source-bound certificates and fault/operation matrices remain historical
@@ -78,6 +78,28 @@ Raw arrays, complete masks, readable images, inputs/source snapshots, stage/
 board observations and compressed external stdout/stderr remain retained.
 These are local functional results, not thermally controlled Pi performance.
 All 76 Python-package source/assets in the built wheel also matched source bytes.
+
+## Installer handoff correction (2026-09-18)
+
+The global Pi installer now prints the **unified full scientific acceptance**
+command when installation finishes, rather than directing operators to the
+legacy quick diagnostic. Its installation/build behavior did not change. The
+installer shell syntax passed `bash -n`; the complete local Python suite passed
+**557 tests in 218.02 seconds** with no failures/errors/skips, recorded in
+`outputs/verification/installer-handoff-20260918/python314-full-tests.xml`.
+
+Because this installer text participates in source identity, a new native local
+acceptance ran against the exact revised 120-file fingerprint above. The
+experiment at
+`outputs/verification/installer-handoff-20260918/full-science/local-pc-python314/2026/09/18/20260918T174552.201742Z-acceptance/`
+returned exit zero, root status `complete`, four of four scientifically valid
+smoke attempts and zero failures/interruptions/retries. Its full-data certificate
+passed all **15** criteria for all four backend pairs; post-exit certificate
+verification passed all **18** source/runtime/input/contract/artifact checks and
+all four pair artifact audits. The certificate SHA-256 is
+`528a82686cbeac659dbadaa938e5cfea889fa1e56eea3106a51ed0be88f493ba`.
+The earlier scaling and fault matrices retain their own recorded source
+identities; this is local science validation, **not** target Pi acceptance.
 
 ## Requirement-by-requirement target work
 
