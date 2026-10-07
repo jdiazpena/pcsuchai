@@ -8,6 +8,9 @@ operation-costs/
 # Local operator clipboard: overwritten with only the next command to run.
 /commands_for_joaquin.md
 
+# Local drop folder for Raspberry Pi exports and other inspection artifacts.
+/results/
+
 # Include the canonical SUCHAI-1 input; keep unrelated local data out of Git.
 data/raw/*
 !data/raw/README.md
