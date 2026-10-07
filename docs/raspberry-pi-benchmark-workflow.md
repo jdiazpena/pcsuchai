@@ -12,7 +12,7 @@ the reproducible protocol or public documentation.
 
 | Order | Device | Benchmark label | Architecture | Current status |
 |---:|---|---|---|---|
-| 1 | Raspberry Pi 5 | `pi5` | 64-bit `aarch64` | Acceptance passed; export pending |
+| 1 | Raspberry Pi 5 | `pi5` | 64-bit `aarch64` | Acceptance passed and exported; transfer/import pending |
 | 2 | Raspberry Pi 4 | `pi4` | 64-bit `aarch64` | Pending |
 | 3 | Raspberry Pi Zero 2 W | `pi-zero-2-w` | 64-bit `aarch64` | Pending |
 | 4 | Raspberry Pi Zero W | `pi-zero-w` | 32-bit `armv6l` | Installation and acceptance unproven |
@@ -236,7 +236,7 @@ Update this table only from retained output or transferred artifacts.
 
 | Device | Install | Acceptance | Export/import | Pilot | Equal work | Scaling/overhead/counters | Sustained/persistent |
 |---|---|---|---|---|---|---|---|
-| Pi 5 | Reported successful | **Passed 2026-10-07**: 4/4 valid, 0 failures; 15-criterion certificate passed; 39.7–40.25°C during smoke jobs | Export command issued; result pending | Pending | Pending | Pending | Pending |
+| Pi 5 | Reported successful | **Passed 2026-10-07**: 4/4 valid, 0 failures; 15-criterion certificate passed; 39.7–40.25°C during smoke jobs | **Exported 2026-10-07**: 443 files, 196,189,884 logical bytes, 147,936,738 compressed bytes; SHA-256 `dea182d4319de220780fa24de98dc0e402e555c7a89d081bd04292d402d435be`; transfer/import pending | Pending | Pending | Pending | Pending |
 | Pi 4 | Pending | Pending | Pending | Pending | Pending | Pending | Pending |
 | Pi Zero 2 W | Pending | Pending | Pending | Pending | Pending | Pending | Pending |
 | Pi Zero W | Pending | Pending | Pending | Pending | Pending | Pending | Pending |
@@ -244,9 +244,10 @@ Update this table only from retained output or transferred artifacts.
 Pi 5 acceptance evidence above currently comes from the operator's retained
 terminal output and experiment path
 `/home/pi/pcsuchai/outputs/benchmarks/pi5/2026/10/07/20261007T150704.396363Z-acceptance`.
-The archive digest, exact source/runtime identity and independent local artifact
-verification remain pending transfer. Therefore this table does not yet claim
-complete Pi 5 workflow acceptance or any comparative hardware result.
+The Pi produced and verified the acceptance archive in 10.751 seconds. Exact
+source/runtime identity and independent local artifact verification remain
+pending transfer and import. Therefore this table does not yet claim complete
+Pi 5 workflow acceptance or any comparative hardware result.
 
 The full scientific/statistical acceptance contract remains
 [benchmark-completion-plan.md](benchmark-completion-plan.md). This workflow is
