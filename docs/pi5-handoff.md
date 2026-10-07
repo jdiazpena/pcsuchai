@@ -1,5 +1,9 @@
 # Pi 5: installation, acceptance and first experiments
 
+The canonical cross-board order and live evidence ledger are in
+[Raspberry Pi benchmark workflow](raspberry-pi-benchmark-workflow.md). This page
+provides additional Pi 5 command detail; it does not replace that sequence.
+
 Run these commands in your existing SSH terminal on the Pi, from `~/pcsuchai`.
 They do not create or activate a Python environment. The installer uses system
 `/usr/bin/python3`, global installation with `--break-system-packages`, and the

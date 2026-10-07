@@ -60,9 +60,11 @@ python3 scripts/run_experiment.py run --manifest configs/experiments/equal-work.
 
 The unified launcher uses immutable manifests for acceptance, equal work,
 sustained blocks, persistent workers, counters, scaling and observation overhead.
-See [Pi 5 handoff](docs/pi5-handoff.md) for exact installation, acceptance and
-single-pair four-hour commands; [manifest experiments](docs/manifest-experiments.md)
-describes all controls. Equal-work thermal defaults require pilot calibration.
+See the canonical [Raspberry Pi benchmark workflow](docs/raspberry-pi-benchmark-workflow.md)
+for the ordered installation, acceptance, transfer, pilot and experiment sequence
+on all four boards. [Pi 5 handoff](docs/pi5-handoff.md) retains detailed copy-ready
+commands; [manifest experiments](docs/manifest-experiments.md) describes all
+controls. Equal-work thermal defaults require pilot calibration.
 Local verification is not Pi acceptance or a completed hardware comparison;
 the [completion status](docs/benchmark-implementation-status.md) records both
 verified evidence and remaining target work.

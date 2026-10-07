@@ -55,7 +55,9 @@ Cached wheels are checked for matching Apex version and filename/directory/WHEEL
 tags, not executed; runtime/native/full-data acceptance is still mandatory.
 Publication uses Linux hard links; use a destination supporting them. A failed
 publication retains its new partial files for diagnosis. No retained benchmark
-data are removed. See [Pi 5 handoff](../pi5-handoff.md) for exact first-run commands.
+data are removed. Follow the ordered
+[Raspberry Pi benchmark workflow](../raspberry-pi-benchmark-workflow.md) on every
+board; [Pi 5 handoff](../pi5-handoff.md) has additional copy-ready detail.
 
 The installer:
 

@@ -4,9 +4,10 @@ The completion contract is [benchmark-completion-plan.md](benchmark-completion-p
 Implementation is in progress. A passing unit test is not Pi acceptance.
 
 The [release audit](release-audit.md) separates current-source release checks
-from historical verification and every remaining target gate. The
-[Pi 5 handoff](pi5-handoff.md) gives the exact install/acceptance/equal-work/
-four-hour/transfer commands. Source changes invalidate applicability of earlier
+from historical verification and every remaining target gate. The canonical
+[Raspberry Pi benchmark workflow](raspberry-pi-benchmark-workflow.md) gives one
+ordered sequence for all four boards, while [Pi 5 handoff](pi5-handoff.md)
+retains additional copy-ready detail. Source changes invalidate applicability of earlier
 certificates; current-source evidence is listed there only after inspected
 terminal results.
 

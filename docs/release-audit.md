@@ -79,6 +79,20 @@ board observations and compressed external stdout/stderr remain retained.
 These are local functional results, not thermally controlled Pi performance.
 All 76 Python-package source/assets in the built wheel also matched source bytes.
 
+## First target acceptance evidence (2026-10-07)
+
+The Pi 5 operator's retained terminal output reports root status `complete`,
+four scheduled/started/scientifically valid attempts, zero failures,
+interruptions, retries or skips, and a passing 15-criterion full-data
+certificate at
+`/home/pi/pcsuchai/outputs/benchmarks/pi5/2026/10/07/20261007T150704.396363Z-acceptance/validation/20261007T150721.687856Z/full-validation-certificate.json`.
+All Astropy/Skyfield × AACGMv2/ApexPy smoke jobs completed; sampled job-end
+temperatures were 39.7–40.25°C. This establishes reported Pi 5 functional
+acceptance. Export, byte/image import verification, exact runtime/source audit,
+pilot calibration and every performance experiment remain pending. It is not
+evidence for any other Pi. The canonical execution order and live per-board
+ledger are in [Raspberry Pi benchmark workflow](raspberry-pi-benchmark-workflow.md).
+
 ## Installer handoff correction (2026-09-18)
 
 The global Pi installer now prints the **unified full scientific acceptance**
@@ -106,13 +120,13 @@ identities; this is local science validation, **not** target Pi acceptance.
 | Completion gate | Deliverable software/local evidence | Evidence still required on the Pis |
 |---|---|---|
 | 1. Contract | Strict seven-kind manifests; immutable workload/session/attempt/time semantics; failures consume slots, no automatic retries | Per-board pilots and reviewed frozen counts/thermal/storage policies |
-| 2. Science/runtime | Full historical chain, orbit reference/parity, own-model magnetic references, footpoints, all 32 filters/maps, complete raw/invalid rows | Installed final dependency closure and full scientific acceptance on each board; same-backend cross-device tolerance decisions |
+| 2. Science/runtime | Full historical chain, orbit reference/parity, own-model magnetic references, footpoints, all 32 filters/maps, complete raw/invalid rows; Pi 5 terminal acceptance passed | Pi 5 artifact transfer/independent audit; installed final dependency closure and full acceptance on the other boards; same-backend cross-device tolerance decisions |
 | 3. Orchestration | Unified foreground/detached/status/stop/resume; device lock; native short mode matrix and owned-process abrupt recovery | Successful supported workflows on all four targets |
 | 4. Measurement | Explicit stage/worker/supervisor/full-cycle scopes; streaming raw samples; acquisition availability; separate retained operation costs | Actual matched overhead, representative storage growth/headroom and effective target provenance |
 | 5. Thermal | Built-in-sensor recovery, balanced blocks, fail-closed missing/timeout/clock checks, preserved traces and firmware protections | Real SoC sensor/clock observations, calibration and sustained trends; no assumed equilibrium |
 | 6. Worker/counters | Same recomputed chain in persistent/fresh modes; cleanup tests; repeated small counter groups with support/permission/coverage decisions | Long-duration resource behavior and actual exposed PMU measurements (unavailable reasons where unsupported) |
 | 7. Reporting | Saved-raw reports include failures, independent sessions, numerical decisions, uncertainty, stages/resources/thermal/counters/scaling/storage | Actual independent cross-device/equal-work/overhead/scaling/sustained results under frozen contracts |
-| 8. Operation | Straightforward global installer with proven Apex fix; [exact Pi commands](pi5-handoff.md); immutable raw export/import/report | Every supported board's installation → acceptance → comparison → sustained → export/report, then declared longer tests |
+| 8. Operation | Straightforward global installer with proven Apex fix; [ordered cross-board workflow](raspberry-pi-benchmark-workflow.md) and [detailed Pi 5 commands](pi5-handoff.md); immutable raw export/import/report | Every supported board's installation → acceptance → comparison → sustained → export/report, then declared longer tests |
 
 Only existing boards/storage/cooling/supplies and their built-in sensors are
 used. Electrical power/energy, additional sensors and new hardware are excluded.
