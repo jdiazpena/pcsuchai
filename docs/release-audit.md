@@ -101,10 +101,16 @@ ApexPy 2.1.1 passed seven frozen upstream numerical anchors and five production
 bridge cases; its ARM native module and coefficient files are fingerprinted in
 the retained evidence. This establishes independently audited Pi 5 functional
 acceptance. Pilot calibration and every performance experiment remain pending.
-The externally stored master-run and export-operation receipts remain pending
-separate transfer, because an archive cannot contain the cost of creating
-itself. This result is not absolute physical validation or evidence for another
-Pi. The canonical execution order and live per-board ledger are in
+The separate master-run/export operation-log archive was also transferred and
+verified against SHA-256
+`b095a281cd12ab3daa149a003fc91185dd4b6a462ffc683840d5b21a3814a1bd`.
+Both operation logs passed the saved-cost audit with zero invalid, unfinished
+or failed operations. Their experiment path, canonical manifest hash and
+exported archive identity agree with the imported acceptance evidence. The
+master command took 169.125830 seconds; the export API took 10.761194 seconds.
+Stage 3 acceptance transfer and review are complete. This result is not
+absolute physical validation or evidence for another Pi. The canonical
+execution order and live per-board ledger are in
 [Raspberry Pi benchmark workflow](raspberry-pi-benchmark-workflow.md).
 
 ## Installer handoff correction (2026-09-18)

@@ -12,7 +12,7 @@ the reproducible protocol or public documentation.
 
 | Order | Device | Benchmark label | Architecture | Current status |
 |---:|---|---|---|---|
-| 1 | Raspberry Pi 5 | `pi5` | 64-bit `aarch64` | Acceptance archive independently verified; external operation-receipt transfer pending |
+| 1 | Raspberry Pi 5 | `pi5` | 64-bit `aarch64` | Acceptance and both operation logs independently verified; pilot pending |
 | 2 | Raspberry Pi 4 | `pi4` | 64-bit `aarch64` | Pending |
 | 3 | Raspberry Pi Zero 2 W | `pi-zero-2-w` | 64-bit `aarch64` | Pending |
 | 4 | Raspberry Pi Zero W | `pi-zero-w` | 32-bit `armv6l` | Installation and acceptance unproven |
@@ -236,13 +236,13 @@ Update this table only from retained output or transferred artifacts.
 
 | Device | Install | Acceptance | Export/import | Pilot | Equal work | Scaling/overhead/counters | Sustained/persistent |
 |---|---|---|---|---|---|---|---|
-| Pi 5 | Reported successful | **Passed 2026-10-07**: 4/4 valid, 0 failures; 15-criterion certificate passed; 39.7–40.25°C during smoke jobs | **Science archive passed 2026-10-07**: SHA-256 matched; all 443 files/196,189,884 logical bytes and 152 images independently verified; report reconstructed 4/4 product-valid and reference-accepted attempts; external master/export operation receipts pending transfer | Pending | Pending | Pending | Pending |
+| Pi 5 | Reported successful | **Passed 2026-10-07**: 4/4 valid, 0 failures; 15-criterion certificate passed; 39.7–40.25°C during smoke jobs | **Passed 2026-10-07**: both archive checksums matched; all 443 experiment files/196,189,884 logical bytes and 152 images independently verified; report reconstructed 4/4 accepted attempts; both master/export operation logs validated and matched to this experiment | Pending | Pending | Pending | Pending |
 | Pi 4 | Pending | Pending | Pending | Pending | Pending | Pending | Pending |
 | Pi Zero 2 W | Pending | Pending | Pending | Pending | Pending | Pending | Pending |
 | Pi Zero W | Pending | Pending | Pending | Pending | Pending | Pending | Pending |
 
-Pi 5 acceptance evidence above currently comes from the operator's retained
-terminal output and experiment path
+Pi 5 acceptance evidence above comes from independently verified archives
+transferred by the operator, retaining the original experiment path
 `/home/pi/pcsuchai/outputs/benchmarks/pi5/2026/10/07/20261007T150704.396363Z-acceptance`.
 The Pi produced the acceptance archive in 10.751 seconds. Independent import
 confirmed source fingerprint
@@ -252,9 +252,18 @@ all 15 certificate criteria, all 443 retained files and all 152 images from
 eight pipeline manifests. ApexPy 2.1.1 passed all seven frozen upstream
 numerical anchors and five production bridge cases. This completes Pi 5
 functional acceptance; it is not a performance comparison, thermal pilot,
-absolute physical-truth claim or evidence for another board. The master-run and
-export-operation receipts remain on the Pi until their separate transfer is
-verified; the science archive cannot contain the cost of creating itself.
+absolute physical-truth claim or evidence for another board.
+
+The separate operation-log archive has SHA-256
+`b095a281cd12ab3daa149a003fc91185dd4b6a462ffc683840d5b21a3814a1bd`.
+Its two logs passed the saved-cost audit with zero invalid, unfinished or failed
+operations. The master log matches the experiment path and canonical manifest
+hash; the export log matches the transferred science archive's hash, file count
+and sizes. The master command took 169.125830 seconds, with 153.593448 seconds
+of parent-process CPU time. The export API took 10.761194 seconds, with
+8.760326 seconds of parent-process CPU time. These containing timings are
+retained separately and are not added to individual scientific-job timings.
+All acceptance evidence requested for Stage 3 is now transferred and verified.
 
 The full scientific/statistical acceptance contract remains
 [benchmark-completion-plan.md](benchmark-completion-plan.md). This workflow is
