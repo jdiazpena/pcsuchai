@@ -21,6 +21,17 @@ python3 scripts/run_experiment.py report outputs/imported-pi5-session1 outputs/i
 
 ## What is retained and checked
 
+The checks depend on the explicit [output policy](output-policies.md).
+The detailed array/mask checks described below apply to `validation` products.
+Onboard products retain images/settings/counts and recorded in-memory domain
+checks. Reports verify those files, frozen recipes, row-selection digest,
+counts and stage sequence. With a full reference, they check projected counts
+and report `onboard_summary_reference_checked`; per-row numerical comparison
+remains explicitly unavailable. `full_reference_accepted` and
+`onboard_summary_accepted` have separate count fields. Output policies define
+separate comparison cohorts. Historical implicit-validation records remain
+readable and are labelled without modifying their saved bytes.
+
 The reader inventories dated attempt directories, not just successful runs in
 a final summary. It retains warm-ups, failed/interrupted slots, terminal
 orphans, damaged records, duplicate slots and checkpoints referencing missing

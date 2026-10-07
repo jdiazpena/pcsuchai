@@ -96,6 +96,27 @@ def test_native_workload_projection_keeps_rows_and_different_frozen_recipes(full
     assert all(item["passed"] for item in result["comparison"]["configured_selections"])
 
 
+def test_onboard_counts_have_a_distinct_reference_scope(full_reference, tmp_path):
+    """Count/reference checks stay explicit; no missing arrays become a pass."""
+
+    experiment, reference, _certificate, inputs = full_reference
+    block = {**experiment["blocks"][0], "output_policy": "onboard", "selection_method": "spread", "size": 2}
+    outputs = run_analysis(inputs["measurements"], inputs["tle"], tmp_path / "products",
+                           orbit_backend="skyfield", magnetic_backend="apexpy", eop_path=inputs["eop"],
+                           limit=2, selection_method="spread", plot_config_path=inputs["plot:custom"],
+                           benchmark=True, output_policy="onboard")
+    record = _validate_run(asdict(outputs), 1.0)
+    products = validate_saved_products(record, PortablePaths(tmp_path))
+    assert products["passed"] and products["raw_products"] is None
+    result = accept_workload_variant(experiment, reference, block, "skyfield-apexpy", products)
+    assert result["passed"] and result["status"] == "onboard_summary_accepted"
+    assert result["numerical_fidelity"] == "unavailable_without_per_row_scientific_products"
+    wrong = copy.deepcopy(products)
+    wrong["onboard_manifest"]["configured_plots"][0]["selected_count"] += 1
+    rejected = accept_workload_variant(experiment, reference, block, "skyfield-apexpy", wrong)
+    assert not rejected["passed"] and rejected["status"] == "failed"
+
+
 def test_first_wrong_attempt_fails_even_when_it_would_match_itself(full_reference, tmp_path):
     experiment, reference, _certificate, inputs = full_reference
     outputs = run_analysis(inputs["measurements"], inputs["tle"], tmp_path / "products",
@@ -272,7 +293,7 @@ def test_audit_keeps_unknown_failed_warmup_and_partial_slots(tmp_path, monkeypat
     """Synthetic accounting fault test; no manufactured scientific evidence."""
 
     import pcsuchai.saved_attempts as reader
-    experiment = {"blocks": [{"path": "b"}]}
+    experiment = {"blocks": [{"path": "b"}], "manifest": {"workload": {}}}
     base = {"run_id": "measured", "kind": "measured", "status": "complete", "recorded_status": "complete",
             "block_path": "b", "pair": "skyfield-apexpy", "products": {}, "issues": [], "record_sha256": "test"}
     fault = {**base, "run_id": "fault", "kind": kind, "status": status, "recorded_status": status}

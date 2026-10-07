@@ -40,6 +40,10 @@ def experiment_blocks(manifest: ExperimentManifest) -> list[dict]:
     for size, profile, level, group, pairs in product(work["selection"]["sizes"], work["plot_profiles"], observation["levels"], groups, pair_sets):
         variant = {"size": size, "selection_method": work["selection"]["method"],
                    "plot_profile": profile, "observation_level": level, "counter_group": group, "pairs": pairs}
+        # Historical block paths are content identities: do not add a default
+        # to old manifests or their original variants would acquire new paths.
+        if "output_policy" in work:
+            variant["output_policy"] = work["output_policy"]
         variant["id"] = hashlib.sha256(json.dumps(variant, sort_keys=True).encode()).hexdigest()[:16]
         variants.append(variant)
     by_id = {variant["id"]: variant for variant in variants}
@@ -233,6 +237,7 @@ def run_experiment(manifest: ExperimentManifest, output_dir: str | Path, project
                         duration_seconds=stop_rule["value"] if stop_rule["kind"] == "duration_per_pair_seconds" else None,
                         warmups=data["execution"]["warmups"], seed=data["execution"]["seed"], limit=block["size"],
                         selection_method=block["selection_method"], observation_level=block["observation_level"],
+                        output_policy=data["workload"].get("output_policy", "validation"),
                         stage_interval_seconds=data["observation"]["stage_interval_seconds"],
                         native_memory_interval_seconds=data["observation"]["native_memory_interval_seconds"],
                         telemetry_interval_seconds=data["observation"]["board_interval_seconds"],
@@ -281,11 +286,15 @@ def run_experiment(manifest: ExperimentManifest, output_dir: str | Path, project
                 saved_evidence = costs.call("prepare_postmeasurement_saved_evidence", saved_experiment, destination)
                 acceptance = costs.call("postmeasurement_workload_acceptance", audit_experiment_workloads, saved_evidence, acceptance_path)
                 state["workload_acceptance"] = {"status": acceptance["status"], "attempt_counts": acceptance["attempt_counts"],
+                                                "output_policy": data["workload"].get("output_policy", "validation"),
+                                                "scope": acceptance["scope"],
                                                 "report_path": str((acceptance_path / "workload-acceptance.json").relative_to(destination)),
                                                 "wall_seconds": acceptance["wall_seconds"], "process_cpu_seconds": acceptance["process_cpu_seconds"]}
                 if acceptance["status"] != "accepted" and state["status"] == "complete":
                     state.update(status="stopped", reason="exact saved-workload full-reference scientific acceptance failed/incomplete")
-                state["scientific_classification"] = "full_reference_workloads_accepted" if acceptance["status"] == "accepted" else "scientifically_incomplete_or_failed"
+                state["scientific_classification"] = (("onboard_summaries_reference_checked"
+                    if data["workload"].get("output_policy") == "onboard" else "full_reference_workloads_accepted")
+                    if acceptance["status"] == "accepted" else "scientifically_incomplete_or_failed")
             state["reason"] = "operator graceful stop" if stopped() else state.get("reason")
             if state["status"] == "stopped" and state["reason"] is None:
                 state["reason"] = "one or more blocks incomplete; inspect retained block reasons"

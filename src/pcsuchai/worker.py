@@ -71,11 +71,13 @@ def _request_options(request: dict) -> dict:
     """
 
     required = {"request_id", "measurement_path", "tle_path", "eop_path", "output_dir", "orbit_backend", "magnetic_backend", "limit", "plot_config_path", "benchmark"}
-    optional = {"selection_method", "observation_level", "stage_interval_seconds", "native_memory_interval_seconds"}
+    optional = {"selection_method", "observation_level", "stage_interval_seconds", "native_memory_interval_seconds", "output_policy"}
     if not isinstance(request, dict) or not required <= request.keys() or request.keys() - required - optional:
         raise ValueError("worker request must contain exactly the analysis protocol fields")
     if request.get("selection_method", "prefix") not in ("full", "prefix", "spread"):
         raise ValueError("selection_method must be full, prefix or spread")
+    from .output_policy import effective_output_policy
+    effective_output_policy(request)
     if request.get("selection_method") == "full" and request["limit"] is not None:
         raise ValueError("full selection requires limit=null")
     if request.get("observation_level", "normal") not in ("minimal", "normal", "detailed"):
@@ -370,6 +372,7 @@ def request_from_analysis_command(command: list[str], request_id: str) -> dict:
                "--output-dir": "output_dir", "--orbit-backend": "orbit_backend",
                "--magnetic-backend": "magnetic_backend", "--limit": "limit", "--plot-config": "plot_config_path",
                "--selection-method": "selection_method", "--observation-level": "observation_level",
+               "--output-policy": "output_policy",
                "--stage-interval-seconds": "stage_interval_seconds", "--native-memory-interval-seconds": "native_memory_interval_seconds"}
     request = {"request_id": request_id, "limit": None, "plot_config_path": None, "benchmark": False}
     while options:

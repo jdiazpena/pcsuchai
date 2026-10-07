@@ -18,7 +18,8 @@ trusted measurement loading and audit
 → all configured selections, classifications, and centroids
 → core geographic/magnetic/footpoint maps
 → all 32 archive-parity configured plots
-→ scientific CSV tables, images, manifests, hashes, and benchmark records
+→ requested images, settings/counts, manifests and benchmark records
+→ detailed scientific tables/masks only under the validation output policy
 ```
 
 The four official alternatives are Astropy→AACGMv2, Astropy→ApexPy,
@@ -75,17 +76,24 @@ Contract version 2 requires fifteen gates and both raw magnetic reference
 reports. Verified historical source snapshots retain their original contract;
 removing new flags/gates from new-source evidence cannot bypass acceptance.
 
-Manifest-driven experiments separately accept their actual selected workload
+Manifest-driven experiments separately check their actual selected workload
 against the certificate's full-data arrays after the measured blocks finish.
-Prefix/spread/full selections and different frozen profiles keep exact source
-rows and plot decisions. This acceptance runs outside measured clocks and never
-rewrites an original attempt record. Historical offline reporting binds the
+Under `validation`, prefix/spread/full selections and frozen profiles keep exact
+source rows and plot decisions for numerical acceptance. Under `onboard`, only
+recorded valid/selected counts can be reference-checked; this is explicitly
+`onboard_summary_reference_checked`, not per-row numerical acceptance. The
+full-data, fifteen-gate acceptance certificate always uses `validation` and is
+not weakened by the measured output policy. These checks run outside measured
+clocks and never rewrite an original attempt record. Historical offline reporting binds the
 certificate to its own archived source/runtime rather than today's checkout;
 see [saved-benchmark-reports.md](saved-benchmark-reports.md).
 
 The invariant/image checks do not establish absolute magnetic accuracy or
 prove that overlapping plotted points can be visually distinguished. Saved
-unrounded arrays and complete masks remain the scientific comparison data.
+unrounded validation arrays and complete masks remain the scientific comparison
+data; their intentional absence in onboard products makes numerical repeat and
+cross-device fidelity unavailable, not implicitly passing. See
+[output policies](output-policies.md).
 Fresh/persistent parity and resource-stability evidence are separate from the
 fresh-process scientific certificate; see
 [running-benchmarks.md](running-benchmarks.md#persistent-process-lifetime).

@@ -164,6 +164,7 @@ def test_saved_workload_acceptance_follows_jobs_and_can_reject_root_completion(t
         assert experiment["state"]["full_validation_certificate"]
         Path(output).mkdir(parents=True)
         result = {"status": "accepted" if accepted else "incomplete_or_failed", "attempt_counts": {},
+                  "scope": "per_row_numerical_reference_checks",
                   "wall_seconds": 12.0, "process_cpu_seconds": 2.0}
         (Path(output) / "workload-acceptance.json").write_text(json.dumps(result))
         return result

@@ -6,6 +6,9 @@ import csv
 import json
 from dataclasses import dataclass, fields
 from pathlib import Path
+from functools import wraps
+import inspect
+from contextlib import contextmanager
 
 import numpy as np
 
@@ -16,6 +19,7 @@ from .magnetic import convert_magnetic
 from .orbit import propagate
 from .plot_config import load_plot_specs, select_plot_data
 from .provenance import native_thread_state
+from .output_policy import validate_output_policy
 from .plotting import (
     plot_configured_map,
     plot_footpoint_particle_map,
@@ -32,7 +36,7 @@ class AnalysisOutputs:
 
     observations: int
     valid_positions: int
-    positions_csv: str
+    positions_csv: str | None
     particle_map_png: str
     manifest_json: str
     benchmark_json: str | None
@@ -43,6 +47,7 @@ class AnalysisOutputs:
     raw_products_npz: str | None = None
     raw_benchmark_samples: str | None = None
     plot_selection_files: tuple[str, ...] = ()
+    output_policy: str = "validation"
 
 
 def _write_raw_products(path, measurements, selection, orbit, magnetic, threshold) -> None:
@@ -134,6 +139,39 @@ def _write_magnetic_positions(path, measurements, magnetic) -> None:
             ])
 
 
+def _record_failures(function):
+    """Keep a small failure/settings record without replacing earlier products."""
+
+    @wraps(function)
+    def wrapped(*args, **kwargs):
+        bound = inspect.signature(function).bind(*args, **kwargs)
+        bound.apply_defaults()
+        settings = bound.arguments
+        validate_output_policy(settings["output_policy"])
+        destination = Path(settings["output_dir"])
+        label = settings["orbit_backend"] + (f"-{settings['magnetic_backend']}" if settings["magnetic_backend"] != "none" else "")
+        manifest = destination / f"manifest-{label}.json"
+        if manifest.exists() or manifest.is_symlink():
+            raise FileExistsError(f"analysis record already exists; use a new output directory: {manifest}")
+        try:
+            return function(*args, **kwargs)
+        except BaseException as error:
+            if destination.is_dir() and not manifest.exists():
+                try:
+                    with manifest.open("x", encoding="utf-8") as stream:
+                        json.dump({"output_policy": settings["output_policy"], "status": "failed",
+                                   "error": {"type": type(error).__name__, "message": str(error)},
+                                   "settings": {key: str(value) if isinstance(value, Path) else value
+                                                for key, value in settings.items()},
+                                   "partial_products_retained": True}, stream, indent=2)
+                        stream.write("\n")
+                except Exception as record_error:
+                    error.add_note(f"failure summary could not be saved: {record_error}")
+            raise
+    return wrapped
+
+
+@_record_failures
 def run_analysis(
     measurement_path: str | Path,
     tle_path: str | Path,
@@ -149,9 +187,16 @@ def run_analysis(
     observation_level: str = "normal",
     stage_interval_seconds: float = 0.05,
     native_memory_interval_seconds: float = 10.0,
+    output_policy: str = "validation",
 ) -> AnalysisOutputs:
-    """Run the first complete local pipeline and write reproducible artifacts."""
+    """Execute identical science/plots with onboard summaries or full evidence.
 
+    The Python API keeps its historical validation default. The production CLI
+    and new benchmark manifests explicitly select onboard. No output policy
+    changes data selection, magnetic model, plotting recipes or instrumentation.
+    """
+
+    validate_output_policy(output_policy)
     destination = Path(output_dir)
     destination.mkdir(parents=True, exist_ok=True)
     run_label = (
@@ -162,8 +207,17 @@ def run_analysis(
         sample_interval=stage_interval_seconds, observation_level=observation_level,
         native_memory_interval=native_memory_interval_seconds,
     )
+    completed_stages = []
 
-    with recorder.measure("load_measurements"):
+    @contextmanager
+    def measure(name):
+        """Record completed production stages even without timing instrumentation."""
+
+        with recorder.measure(name):
+            yield
+        completed_stages.append(name)
+
+    with measure("load_measurements"):
         from .workload import describe_selection, select_measurements
         original_measurements = load_measurements(measurement_path)
         # Legacy prefix calls retain their previous oversized-limit behavior.
@@ -172,30 +226,40 @@ def run_analysis(
         workload_selection = describe_selection(original_measurements, measurements, limit, selection_method)
         del original_measurements
         plot_specs = load_plot_specs(plot_config_path) if plot_config_path is not None else ()
-    with recorder.measure("load_and_select_tles"):
+    with measure("load_and_select_tles"):
         records = load_tle_history(tle_path)
         selection = select_nearest_tles(measurements.times, records)
-    with recorder.measure("propagate_orbit"):
+    with measure("propagate_orbit"):
         orbit = propagate(orbit_backend, measurements.times, records, selection, eop_path)
+        from .onboard_validation import audit_orbit_result
+        orbit_integrity = audit_orbit_result(orbit, len(measurements))
+        if not orbit_integrity["passed"]:
+            raise ValueError(f"orbit output violates row/domain contract: {orbit_integrity['checks']}")
     magnetic = None
     if magnetic_backend != "none":
-        with recorder.measure("convert_magnetic_coordinates"):
+        with measure("convert_magnetic_coordinates"):
             magnetic = convert_magnetic(magnetic_backend, measurements.times, orbit)
             from .magnetic.integrity import audit_magnetic_result
             magnetic_integrity = audit_magnetic_result(magnetic, orbit)
             if not magnetic_integrity["passed"]:
                 raise ValueError(f"magnetic output violates row/domain/unit contract: {magnetic_integrity['checks']}")
-    raw_products_path = destination / f"raw-products-{run_label}.npz"
-    with recorder.measure("write_raw_scientific_products"):
-        _write_raw_products(raw_products_path, measurements, selection, orbit, magnetic, particle_threshold)
-    positions_path = destination / f"positions-{run_label}.csv"
-    with recorder.measure("write_positions"):
-        _write_positions(positions_path, measurements, records, selection, orbit)
+    raw_products_path = None
+    positions_path = None
+    if output_policy == "validation":
+        raw_products_path = destination / f"raw-products-{run_label}.npz"
+        with measure("write_raw_scientific_products"):
+            _write_raw_products(raw_products_path, measurements, selection, orbit, magnetic, particle_threshold)
+        positions_path = destination / f"positions-{run_label}.csv"
+        with measure("write_positions"):
+            _write_positions(positions_path, measurements, records, selection, orbit)
     map_path = destination / f"particle-map-{run_label}.png"
-    with recorder.measure("render_and_write_plot"):
+    with measure("render_and_write_plot"):
         plot_metadata = plot_particle_map(
             orbit, measurements.particle_counts, map_path, threshold=particle_threshold
         )
+        particle_mask = np.isfinite(measurements.particle_counts) & (measurements.particle_counts >= particle_threshold)
+        plot_metadata["selected_count"] = int(np.count_nonzero(
+            particle_mask & np.isfinite(orbit.latitude_deg) & np.isfinite(orbit.longitude_deg)))
 
     magnetic_positions_path = None
     magnetic_map_path = None
@@ -203,38 +267,54 @@ def run_analysis(
     footpoint_map_path = None
     footpoint_plot_metadata = None
     if magnetic is not None:
-        magnetic_positions_path = destination / f"magnetic-positions-{magnetic_backend}.csv"
-        with recorder.measure("write_magnetic_positions"):
-            _write_magnetic_positions(magnetic_positions_path, measurements, magnetic)
+        if output_policy == "validation":
+            magnetic_positions_path = destination / f"magnetic-positions-{magnetic_backend}.csv"
+            with measure("write_magnetic_positions"):
+                _write_magnetic_positions(magnetic_positions_path, measurements, magnetic)
         magnetic_map_path = destination / f"particle-map-magnetic-{magnetic_backend}.png"
-        with recorder.measure("render_and_write_magnetic_plot"):
+        with measure("render_and_write_magnetic_plot"):
             magnetic_plot_metadata = plot_magnetic_particle_map(
                 magnetic, measurements.particle_counts, magnetic_map_path,
                 threshold=particle_threshold,
             )
+            magnetic_plot_metadata["selected_count"] = int(np.count_nonzero(
+                particle_mask & (magnetic.error_codes == 0) & np.isfinite(magnetic.latitude_deg)
+                & np.isfinite(magnetic.longitude_deg)))
         footpoint_map_path = destination / f"particle-map-footpoint-{magnetic_backend}.png"
-        with recorder.measure("render_and_write_footpoint_plot"):
+        with measure("render_and_write_footpoint_plot"):
             footpoint_plot_metadata = plot_footpoint_particle_map(
                 magnetic, measurements.particle_counts, footpoint_map_path,
                 threshold=particle_threshold,
             )
+            footpoint_plot_metadata["selected_count"] = int(np.count_nonzero(
+                particle_mask & (magnetic.error_codes == 0) & np.isfinite(magnetic.surface_latitude_deg)
+                & np.isfinite(magnetic.surface_longitude_deg)))
 
     configured_plot_metadata = []
     configured_plot_files = []
     plot_selection_files = []
     for spec in plot_specs:
         configured_path = destination / f"{spec.name}.png"
-        with recorder.measure(f"render_configured_plot:{spec.name}"):
+        with measure(f"render_configured_plot:{spec.name}"):
             selected = select_plot_data(spec, measurements, orbit, magnetic)
-            selection_path = destination / f"{spec.name}.selection.npz"
-            _write_plot_selection(selection_path, selected)
-            plot_selection_files.append(str(selection_path))
+            if output_policy == "validation":
+                selection_path = destination / f"{spec.name}.selection.npz"
+                _write_plot_selection(selection_path, selected)
+                plot_selection_files.append(str(selection_path))
             if spec.plot_type == "time_availability":
                 metadata = plot_time_availability(
                     spec, selected, measurements.times, configured_path
                 )
             else:
                 metadata = plot_configured_map(spec, selected, configured_path)
+            metadata["selected_count"] = int(np.count_nonzero(selected.mask))
+            metadata["selection_integrity"] = {
+                "mask_boolean": selected.mask.dtype == np.dtype(bool),
+                "row_shapes_match": all(np.asarray(value).shape == (len(measurements),)
+                                        for value in (selected.mask, selected.x, selected.y, selected.values)),
+                "selected_values_finite": all(bool(np.all(np.isfinite(value[selected.mask])))
+                                              for value in (selected.x, selected.y, selected.values)),
+            }
             if spec.calculate_centroid:
                 metadata["particle_weighted_centroid"] = calculate_particle_weighted_centroid(
                     spec, measurements, orbit, magnetic, allow_unavailable=True
@@ -245,7 +325,19 @@ def run_analysis(
     valid_positions = int(np.count_nonzero(orbit.error_codes == 0))
     manifest_path = destination / f"manifest-{run_label}.json"
     benchmark_path = destination / f"benchmark-{run_label}.json" if benchmark else None
+    if output_policy == "onboard":
+        from .onboard_validation import source_rows_digest
+        workload_selection["source_rows_sha256"] = source_rows_digest(measurements.source_rows)
+        workload_selection.pop("source_rows", None)
     manifest = {
+        "output_policy": output_policy,
+        "status": "complete",
+        "error": None,
+        "completed_stages": completed_stages,
+        "settings": {"output_policy": output_policy, "particle_threshold": particle_threshold,
+                     "limit": limit, "selection_method": selection_method,
+                     "orbit_backend": orbit_backend, "magnetic_backend": magnetic_backend},
+        "orbit_integrity": orbit_integrity,
         "orbit_backend": orbit_backend,
         "magnetic_backend": magnetic_backend,
         "magnetic_integrity": magnetic_integrity if magnetic is not None else None,
@@ -263,20 +355,23 @@ def run_analysis(
         "valid_magnetic_positions": (
             int(np.count_nonzero(magnetic.error_codes == 0)) if magnetic is not None else None
         ),
+        "invalid_magnetic_positions": (int(np.count_nonzero(magnetic.error_codes != 0)) if magnetic is not None else None),
         "inputs": {
             "measurements": str(measurement_path), "tle": str(tle_path),
             "eop": str(eop_path), "plot_config": str(plot_config_path),
         },
         "runtime": runtime_metadata(),
         "native_threads": native_thread_state(),
-        "raw_products_npz": str(raw_products_path),
+        "raw_products_npz": str(raw_products_path) if raw_products_path else None,
         "instrumentation": {"level": observation_level if benchmark else "disabled",
                             "stage_sampling": "not_collected" if not recorder.enabled else "enabled",
                             "requested_stage_interval_seconds": stage_interval_seconds,
                             "native_memory_interval_seconds": native_memory_interval_seconds,
                             "external_board_observation": "controlled independently by campaign"},
         "plot_selection_files": plot_selection_files,
-        "raw_data_retention": "lossless; all source rows and full plot masks preserved",
+        "raw_data_retention": ("lossless; all source rows and full plot masks preserved"
+                               if output_policy == "validation" else
+                               "images/settings/counts only; per-row science and masks remain in memory"),
         "magnetic_mapping_contract": ({
             "angular_residual": "degrees; ApexPy map_to_height residual only; unavailable for AACGMv2",
             "surface_altitude": "geodetic kilometres returned by mapping",
@@ -288,13 +383,14 @@ def run_analysis(
     manifest["raw_benchmark_samples"] = str(recorder.raw_sample_path) if recorder.raw_sample_path else None
     manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
     return AnalysisOutputs(
-        len(measurements), valid_positions, str(positions_path), str(map_path), str(manifest_path),
+        len(measurements), valid_positions, str(positions_path) if positions_path else None, str(map_path), str(manifest_path),
         str(benchmark_path) if benchmark_path else None,
         str(magnetic_positions_path) if magnetic_positions_path else None,
         str(magnetic_map_path) if magnetic_map_path else None,
         str(footpoint_map_path) if footpoint_map_path else None,
         tuple(configured_plot_files),
-        str(raw_products_path),
+        str(raw_products_path) if raw_products_path else None,
         str(recorder.raw_sample_path) if recorder.raw_sample_path else None,
         tuple(plot_selection_files),
+        output_policy,
     )

@@ -353,6 +353,7 @@ def _analysis_command(
     observation_level: str = "normal",
     stage_interval_seconds: float = 0.05,
     native_memory_interval_seconds: float = 10.0,
+    output_policy: str = "validation",
 ) -> list[str]:
     """Build the exact child command used for every isolated run."""
 
@@ -362,6 +363,7 @@ def _analysis_command(
         "--eop", str(eop), "--output-dir", str(output_dir),
         "--orbit-backend", scenario.orbit_backend,
         "--magnetic-backend", scenario.magnetic_backend,
+        "--output-policy", output_policy,
     ]
     if benchmark:
         command.append("--benchmark")
@@ -565,30 +567,50 @@ def _validate_run(outputs: dict, external_wall_seconds: float) -> dict:
     if not outputs.get("manifest_json") or not Path(outputs["manifest_json"]).is_file():
         raise ScientificValidationError("benchmark run is missing artifacts: manifest_json")
     manifest = json.loads(Path(outputs["manifest_json"]).read_text())
+    from .output_policy import effective_output_policy, policy_origin
+    output_policy = effective_output_policy(manifest)
+    if outputs.get("output_policy", output_policy) != output_policy:
+        raise ScientificValidationError("analysis outputs and manifest output policies differ")
     minimal = manifest.get("instrumentation", {}).get("level") == "minimal"
-    required = (
-        "positions_csv", "particle_map_png", "manifest_json", "benchmark_json",
-        "magnetic_positions_csv", "magnetic_particle_map_png", "footpoint_particle_map_png",
-        "raw_products_npz",
-    ) + (() if minimal else ("raw_benchmark_samples",))
+    required = ("particle_map_png", "manifest_json", "benchmark_json", "magnetic_particle_map_png",
+                "footpoint_particle_map_png")
+    if output_policy == "validation":
+        required += ("positions_csv", "magnetic_positions_csv", "raw_products_npz")
+    required += (() if minimal else ("raw_benchmark_samples",))
     missing = [name for name in required if not outputs.get(name) or not Path(outputs[name]).is_file()]
     if missing:
         raise ScientificValidationError(f"benchmark run is missing artifacts: {', '.join(missing)}")
     if manifest["valid_positions"] <= 0 or manifest["observations"] <= 0:
         raise ScientificValidationError("benchmark run produced no valid orbit observations")
     from .product_validation import validate_pipeline_images
-    image_validation = validate_pipeline_images(
-        manifest, outputs["raw_products_npz"], tuple(outputs.get("plot_selection_files", [])),
-    )
+    stages = json.loads(Path(outputs["benchmark_json"]).read_text())
+    if output_policy == "onboard":
+        from .onboard_validation import validate_onboard_manifest
+        if any(outputs.get(role) for role in ("positions_csv", "magnetic_positions_csv", "raw_products_npz", "plot_selection_files")):
+            raise ScientificValidationError("onboard output unexpectedly retained scientific arrays/tables")
+        image_validation = validate_onboard_manifest(manifest, stages=stages)
+    else:
+        image_validation = validate_pipeline_images(
+            manifest, outputs["raw_products_npz"], tuple(outputs.get("plot_selection_files", [])),
+        )
     if not image_validation["passed"]:
         raise ScientificValidationError("benchmark run failed saved-image scientific selection/dimension/context validation")
-    stages = json.loads(Path(outputs["benchmark_json"]).read_text())
     artifacts = {name: _artifact_record(outputs[name]) for name in required}
     configured = [_artifact_record(path) for path in outputs.get("configured_plot_files", [])]
     selections = [_artifact_record(path) for path in outputs.get("plot_selection_files", [])]
-    if len(selections) != len(configured):
+    if len(configured) != len(manifest.get("configured_plots", [])):
+        raise ScientificValidationError("configured image artifacts and manifest differ in count")
+    if output_policy == "validation" and len(selections) != len(configured):
         raise ScientificValidationError("each configured plot must retain its complete raw selection")
     return {
+        "output_policy": output_policy,
+        "output_policy_origin": policy_origin(manifest),
+        "output_summary": {"observations": manifest["observations"],
+                           "valid_positions": manifest["valid_positions"],
+                           "valid_magnetic_positions": manifest["valid_magnetic_positions"],
+                           "plot_counts": [item["points_rendered"] for item in
+                                           [manifest["plot"], manifest["magnetic_plot"], manifest["footpoint_plot"],
+                                            *manifest.get("configured_plots", [])]]},
         "external_wall_seconds": external_wall_seconds,
         "observations": manifest["observations"],
         "valid_positions": manifest["valid_positions"],
@@ -689,6 +711,15 @@ def _summarize_runs(runs: list[dict]) -> dict:
 def _check_repeat_consistency(runs: list[dict]) -> dict:
     """Require deterministic scientific tables across identical repeats."""
 
+    loaded = [_load_run(reference) for reference in runs]
+    policies = {run.get("output_policy", "validation") for run in loaded}
+    if len(policies) != 1:
+        return {"all_consistent": False, "scope": "mixed_output_policies_rejected"}
+    if policies == {"onboard"}:
+        summaries = [run.get("output_summary") for run in loaded]
+        return {"all_consistent": bool(summaries) and all(item is not None and item == summaries[0] for item in summaries),
+                "scope": "recorded_counts_only_not_per_row_numerical_equality",
+                "numerical_fidelity": "unavailable_without_per_row_scientific_products"}
     roles = ("positions_csv", "magnetic_positions_csv")
     result = {}
     role_hashes = {role: [] for role in roles}
@@ -888,9 +919,12 @@ def run_benchmark_suite(
     counter_group: tuple[str, ...] | None = None,
     minimum_counter_coverage_percent: float = 95.0,
     require_temperature_sensor: bool = False,
+    output_policy: str = "validation",
 ) -> dict:
     """Run a durable finite or duration-based clean-process benchmark campaign."""
 
+    from .output_policy import validate_output_policy
+    validate_output_policy(output_policy)
     if duration_seconds is None and (repeats is None or repeats < 1):
         raise ValueError("benchmark suite requires positive attempts or a duration")
     if repeats is not None and repeats < 1:
@@ -992,6 +1026,7 @@ def run_benchmark_suite(
         for name, path in inputs.items()
     }
     current_settings = {
+        "output_policy": output_policy,
         "repeats": repeats, "warmups": warmups, "seed": seed, "limit": limit,
         "duration_seconds": duration_seconds,
         "cooldown_seconds": cooldown_seconds, "timeout_seconds": timeout_seconds,
@@ -1280,6 +1315,7 @@ def run_benchmark_suite(
                 selection_method=selection_method,
                 observation_level=observation_level, stage_interval_seconds=stage_interval_seconds,
                 native_memory_interval_seconds=native_memory_interval_seconds,
+                output_policy=output_policy,
             )
             started_utc = _utc_text()
             from .experiment_control import process_identity
@@ -1405,6 +1441,7 @@ def run_benchmark_suite(
                 selection_method=selection_method,
                 observation_level=observation_level, stage_interval_seconds=stage_interval_seconds,
                 native_memory_interval_seconds=native_memory_interval_seconds,
+                output_policy=output_policy,
             )
             started_utc = _utc_text()
             from .experiment_control import process_identity
@@ -1577,7 +1614,7 @@ def run_benchmark_suite(
         all_consistent &= consistency["all_consistent"]
         scenario_report = session["scenarios"][scenario.name]
         scenario_report["summary"] = _summarize_runs(runs)
-        scenario_report["scientific_repeat_consistency"] = consistency
+        scenario_report["output_repeat_consistency" if output_policy == "onboard" else "scientific_repeat_consistency"] = consistency
         if collect_perf and stop_reason is None:
             print(f"[perf] {scenario.name} starting", file=sys.stderr, flush=True)
             perf_dir = destination / "perf" / scenario.name
@@ -1585,6 +1622,7 @@ def run_benchmark_suite(
             perf_command = _analysis_command(
                 scenario, perf_dir / "outputs", measurements_path, tle_path, eop_path,
                 plot_path, limit, benchmark=False, selection_method=selection_method,
+                output_policy=output_policy,
             )
             scenario_report["hardware_counters"] = _perf_run(
                 perf_command, perf_dir / "perf-stat.csv", timeout_seconds,
@@ -1602,7 +1640,10 @@ def run_benchmark_suite(
 
     enough_successful_runs = all(len(runs) >= 1 for runs in scenario_runs.values())
     all_consistent &= enough_successful_runs
-    session["scientific_outputs_consistent"] = all_consistent
+    session["output_summaries_consistent"] = all_consistent
+    session["scientific_outputs_consistent"] = all_consistent if output_policy == "validation" else None
+    session["repeat_consistency_scope"] = ("scientific_tables" if output_policy == "validation"
+                                           else "recorded_counts_only_not_per_row_numerical_equality")
     session["system_end"] = system_snapshot()
     session["status"] = "complete" if stop_reason is None and all_consistent else "stopped"
     session["stop_reason"] = stop_reason

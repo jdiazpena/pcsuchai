@@ -12,7 +12,9 @@ and generated benchmark outputs remain excluded from Git.
 The pipeline loads trusted instrument products, selects the nearest historical
 TLE (including a later epoch when closer), propagates the orbit, converts magnetic
 coordinates and geographic ground footpoints, applies the configured filters,
-and saves maps, tables and complete compressed raw arrays. Previously calculated
+and saves the products selected by its explicit output policy. Onboard runs save
+maps, settings and counts; validation runs also save scientific tables and
+compressed arrays. Previously calculated
 geographic and classification columns in the source table are ignored.
 
 AACGMv2 and ApexPy are both supported as first-class magnetic-coordinate
@@ -41,6 +43,11 @@ pcsuchai analyze --orbit-backend astropy --benchmark
 pcsuchai validate-orbits --limit 100
 pcsuchai validate-magnetic --limit 100
 ```
+
+The production CLI defaults to `--output-policy onboard`. Use
+`--output-policy validation` for detailed numerical products. Both modes execute
+the same configured calculations, filters and plots; benchmark observation
+level is a separate setting. See [output policies](docs/output-policies.md).
 
 See `docs/` for the hardware inventory and evolving scientific documentation.
 The complete plot/filter profile and custom configuration schema are described
@@ -77,7 +84,9 @@ Existing launchers remain available: `scripts/run_full_products.sh` benchmarks e
 is UTC-ordered by device/year/month/day/session; every execution retains its
 timestamped products, run record, and telemetry. Nothing is automatically
 discarded. Raw stage samples and campaign input snapshots use verified gzip;
-trusted numeric arrays and full plot selections use lossless compressed NPZ.
+validation-mode numeric arrays and full plot selections use lossless compressed
+NPZ. Measured onboard runs retain images, settings and counts instead of those
+scientific arrays; all acquired benchmark samples remain retained.
 Byte-identical repeated products share disk storage through SHA-256 hard links
 without removing their per-run paths. Installation,
 experiment controls, artifact layout, and metric definitions are documented in

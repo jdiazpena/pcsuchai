@@ -11,6 +11,12 @@ proven ApexPy optional-quadmath build fix. No installer runs on the local PC.
 Use only the existing Pi, storage, cooling and supply; no power meter or external
 temperature sensor is involved.
 
+Acceptance retains detailed validation files. Subsequent performance manifests
+select onboard outputs (images/settings/counts) and keep complete benchmark
+observations. This does not remove any configured calculations or plots; see
+[output policies](output-policies.md). Never resume an older experiment under
+changed code or a changed output policy.
+
 ## 1. Update and install
 
 ```bash

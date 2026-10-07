@@ -94,7 +94,10 @@ def _counts(attempts: list) -> dict:
     measured = [item for item in attempts if item["kind"] == "measured"]
     failures = sum(item["status"] == "failed" for item in measured)
     return {"started": len(measured), "product_valid": sum(item["status"] == "complete" and not item["issues"] for item in measured),
-            "full_reference_accepted": sum(item.get("workload_acceptance", {}).get("passed") is True and not item["issues"] for item in measured),
+            "full_reference_accepted": sum(item.get("workload_acceptance", {}).get("passed") is True
+                                           and item.get("output_policy", "validation") == "validation" and not item["issues"] for item in measured),
+            "onboard_summary_accepted": sum(item.get("workload_acceptance", {}).get("passed") is True
+                                            and item.get("output_policy") == "onboard" and not item["issues"] for item in measured),
             "failed": failures, "interrupted": sum(item["status"] == "interrupted" for item in measured),
             "excluded": sum(bool(item["issues"]) or item["cohort_id"] is None for item in measured),
             "failed_fraction_of_started": failures / len(measured) if measured else None,
@@ -110,7 +113,7 @@ def _science_identity(attempt: dict) -> str:
     """
 
     controls = attempt["controls"]
-    return _digest({"pair": attempt["pair"], **{key: controls[key] for key in
+    return _digest({"pair": attempt["pair"], "output_policy": controls.get("output_policy", "validation"), **{key: controls[key] for key in
                     ("source_sha256", "inputs", "python_version", "packages", "selection", "plot_profile")}})
 
 
@@ -213,7 +216,8 @@ def report_experiments(directories: list[str | Path], output_dir: str | Path, *,
                     acceptance = accept_workload_variant(experiment, full_reference, blocks[attempt["block_path"]], attempt["pair"], attempt["products"])
                     attempt["workload_acceptance"] = acceptance
                     if acceptance["passed"]:
-                        attempt["classification"] = "full_reference_workload_accepted"
+                        attempt["classification"] = ("onboard_summary_reference_checked" if attempt.get("output_policy") == "onboard"
+                                                       else "full_reference_workload_accepted")
                     elif acceptance["status"] == "failed":
                         attempt["issues"].append("full-reference exact-workload acceptance failed")
                         attempt["classification"] = "excluded_full_reference_acceptance_failed"
@@ -225,7 +229,13 @@ def report_experiments(directories: list[str | Path], output_dir: str | Path, *,
                 if attempt["status"] == "complete" and attempt["products"] and not attempt["issues"] and attempt["cohort_id"]:
                     identity = _science_identity(attempt)
                     products = attempt["products"]
-                    if identity in reference:
+                    if products.get("output_policy") == "onboard":
+                        unavailable = {"candidate_run_id": attempt["run_id"], "scientific_work_id": identity,
+                                       "status": "unavailable", "passed": None,
+                                       "reason": "onboard output does not retain per-row numerical products"}
+                        comparisons.write(json.dumps(unavailable, separators=(",", ":"), allow_nan=False) + "\n")
+                        numerical.append(unavailable)
+                    elif identity in reference:
                         original = reference[identity]
                         try:
                             check = compare_scientific_products(original["products"]["raw_products"], products["raw_products"],
@@ -350,6 +360,8 @@ def report_experiments(directories: list[str | Path], output_dir: str | Path, *,
         experiment_reports.append({"experiment_id": experiment["identity"], "directory": str(experiment["root"]),
                                    "device_label": experiment["state"].get("device_label"), "recorded_status": experiment["state"].get("status"),
                                    "runtime": experiment["state"].get("runtime"), "counts": counts,
+                                   "output_policy": data["workload"].get("output_policy", "validation"),
+                                   "output_policy_origin": "explicit" if "output_policy" in data["workload"] else "historical_implicit_validation",
                                    "issues": experiment["issues"], "block_schedule": experiment["blocks"],
                                    "full_reference": full_references[experiment["identity"]]})
     result = {

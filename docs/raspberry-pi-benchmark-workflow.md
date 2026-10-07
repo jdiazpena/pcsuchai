@@ -4,6 +4,13 @@ This is the canonical operator sequence for the SUCHAI-1 post-processing
 benchmark. Run the same stages, in this order, on the Pi 5, Pi 4, Pi Zero 2 W
 and Pi Zero W. A result from one board never certifies another board.
 
+Acceptance uses detailed `validation` outputs. Performance protocols explicitly
+use `onboard` outputs: images, settings and counts, with every acquired benchmark
+sample retained separately. The complete calculations and configured plots still
+execute. See [output policies](output-policies.md). The Pi 5 evidence below belongs
+to the recorded earlier source; a code update requires new target acceptance
+before a new measured series.
+
 The local `commands_for_joaquin.md` file is an operator clipboard. It is ignored
 by Git and contains only the next command Joaquín should copy. It is not part of
 the reproducible protocol or public documentation.

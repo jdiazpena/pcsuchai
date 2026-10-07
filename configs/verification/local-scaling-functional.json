@@ -4,6 +4,7 @@
   "kind": "scaling",
   "sessions": 1,
   "workload": {
+    "output_policy": "onboard",
     "measurements": "data/raw/langmuir-2018-2.csv",
     "tle": "data/tle/suchai1.tle",
     "eop": "data/eop/finals2000A.all",

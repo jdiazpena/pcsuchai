@@ -1,5 +1,6 @@
 {
   "schema_version": 1,
+  "output_policy": "onboard",
   "name": "stability",
   "description": "Twenty consecutive full-data rounds with no cooldown to expose thermal and memory drift.",
   "python_version": "3.13.5",

@@ -4,6 +4,16 @@ Status: proposed implementation plan, 2026-09-14. Source audit: `ffdfdaa`.
 This document describes required additions and their acceptance criteria; it
 does not certify the current benchmark as complete.
 
+Output-policy clarification (2026-10-07): the intended measured satellite
+workload saves images, settings and counts under `onboard`; detailed scientific
+arrays/tables/masks are saved under `validation` for acceptance. Every acquired
+benchmark sample remains retained in both modes. The earlier requirements below
+for reconstructing exact scientific arrays apply to validation evidence, not to
+each onboard measured attempt. Counts support operational checks but cannot
+prove per-row numerical equality; reports must state that limit. See
+[output policies](output-policies.md). This clarification does not reduce the
+scientific computation, filters, backend matrix or hardware measurement coverage.
+
 ## Scope and equipment
 
 Use the existing Pi Zero W (32-bit), Zero 2 W, Pi 4 and Pi 5 (64-bit), their

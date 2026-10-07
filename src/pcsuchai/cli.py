@@ -26,6 +26,8 @@ def _parser() -> argparse.ArgumentParser:
     analyze.add_argument("--limit", type=int, default=None, help="process only the first N rows")
     analyze.add_argument("--selection-method", choices=("full", "prefix", "spread"), default="prefix")
     analyze.add_argument("--observation-level", choices=("minimal", "normal", "detailed"), default="normal")
+    analyze.add_argument("--output-policy", choices=("onboard", "validation"), default="onboard",
+                         help="onboard saves images/settings/counts; validation also saves scientific arrays/tables")
     analyze.add_argument("--stage-interval-seconds", type=float, default=0.05)
     analyze.add_argument("--native-memory-interval-seconds", type=float, default=10.0)
     analyze.add_argument("--particle-threshold", type=float, default=0.0)
@@ -93,6 +95,7 @@ def _parser() -> argparse.ArgumentParser:
     suite.add_argument("--limit", type=int, default=None)
     suite.add_argument("--selection-method", choices=("full", "prefix", "spread"), default="prefix")
     suite.add_argument("--observation-level", choices=("minimal", "normal", "detailed"), default="normal")
+    suite.add_argument("--output-policy", choices=("onboard", "validation"), default="onboard")
     suite.add_argument("--stage-interval-seconds", type=float, default=0.05)
     suite.add_argument("--native-memory-interval-seconds", type=float, default=10.0)
     suite.add_argument("--cooldown-seconds", type=float, default=0.0)
@@ -321,6 +324,7 @@ def _dispatch(arguments: argparse.Namespace) -> int:
             session_index=arguments.session_index,
             thread_policy=arguments.thread_policy,
             process_mode=arguments.process_mode,
+            output_policy=arguments.output_policy,
             selection_method=arguments.selection_method,
             observation_level=arguments.observation_level,
             stage_interval_seconds=arguments.stage_interval_seconds,
@@ -329,10 +333,12 @@ def _dispatch(arguments: argparse.Namespace) -> int:
         summary = {
             "report_path": result["report_path"],
             "scientific_outputs_consistent": result["scientific_outputs_consistent"],
+            "output_policy": arguments.output_policy,
+            "output_summaries_consistent": result.get("output_summaries_consistent"),
             "scenarios": list(result["scenarios"]),
         }
         print(json.dumps(summary, indent=2))
-        return 0 if result["status"] == "complete" and result["scientific_outputs_consistent"] else 2
+        return 0 if result["status"] == "complete" and result.get("output_summaries_consistent", result["scientific_outputs_consistent"]) else 2
     try:
         from .pipeline import run_analysis
         outputs = run_analysis(
@@ -344,6 +350,7 @@ def _dispatch(arguments: argparse.Namespace) -> int:
             magnetic_backend=arguments.magnetic_backend,
             limit=arguments.limit,
             particle_threshold=arguments.particle_threshold,
+            output_policy=arguments.output_policy,
             plot_config_path=arguments.plot_config,
             benchmark=arguments.benchmark,
             selection_method=arguments.selection_method,

@@ -250,6 +250,8 @@ def accept_workload_variant(experiment: dict, reference: dict, block: dict, pair
     if not reference["passed"]:
         return {"status": reference["status"], "passed": False, "reason": reference.get("reason", "full reference artifact audit failed")}
     try:
+        if products.get("output_policy") == "onboard":
+            return _accept_onboard_summary(experiment, reference, block, pair, products)
         from .plot_config import load_plot_specs
         from .scientific_comparison import _SelectionFiles
         full = _read_npz(reference["raw_products"][pair])
@@ -267,6 +269,40 @@ def accept_workload_variant(experiment: dict, reference: dict, block: dict, pair
                 "comparison": comparison, "limit": "exact-workload software fidelity to accepted full data; not independent absolute model truth"}
     except (ValueError, OSError, KeyError, TypeError, IndexError, AttributeError) as exc:
         return {"status": "failed", "passed": False, "reason": f"{type(exc).__name__}: {exc}"}
+
+
+def _accept_onboard_summary(experiment, reference, block, pair, products):
+    """Compare recorded counts to full acceptance without claiming array equality."""
+
+    from .plot_config import load_plot_specs
+    full = _read_npz(reference["raw_products"][pair])
+    measurements = select_measurements(experiment["measurements"], block["size"], block["selection_method"])
+    lookup = {int(row): index for index, row in enumerate(full["measurement_source_rows"])}
+    indices = np.asarray([lookup[int(row)] for row in measurements.source_rows])
+    orbit = OrbitResult(**{item.name: full[f"orbit_{item.name}"].item() if item.name == "backend"
+                           else full[f"orbit_{item.name}"][indices] for item in fields(OrbitResult)})
+    magnetic = MagneticResult(**{item.name: full[f"magnetic_{item.name}"].item()
+                                  if item.name in ("backend", "coordinate_system") else full[f"magnetic_{item.name}"][indices]
+                                  for item in fields(MagneticResult)})
+    profile = block["plot_profile"]
+    specs = load_plot_specs(experiment["snapshot_validation"]["input_paths"][f"plot:{profile['name']}"]) if profile["config"] else ()
+    manifest = products["onboard_manifest"]
+    checks = {"threshold": manifest["settings"]["particle_threshold"] == full["particle_threshold"].item(),
+              "valid_orbit_count": manifest["valid_positions"] == int(np.count_nonzero(orbit.error_codes == 0)),
+              "valid_magnetic_count": manifest["valid_magnetic_positions"] == int(np.count_nonzero(magnetic.error_codes == 0)),
+              "configured_plot_count": len(specs) == len(manifest["configured_plots"])}
+    for role, key in (("plot", "geographic_particle_map_mask"), ("magnetic_plot", "magnetic_particle_map_mask"),
+                      ("footpoint_plot", "footpoint_particle_map_mask")):
+        checks[f"selected_count:{role}"] = manifest[role]["selected_count"] == int(np.count_nonzero(full[key][indices]))
+    for spec, metadata in zip(specs, manifest["configured_plots"]):
+        selected = select_plot_data(spec, measurements, orbit, magnetic)
+        checks[f"selected_count:{spec.name}"] = metadata["selected_count"] == int(np.count_nonzero(selected.mask))
+    return {"status": "onboard_summary_accepted" if all(checks.values()) else "failed",
+            "passed": all(checks.values()), "pair": pair, "checks": checks,
+            "certificate_sha256": reference["certificate_sha256"],
+            "scope": "saved_onboard_counts_checked_against_full_validation_reference",
+            "numerical_fidelity": "unavailable_without_per_row_scientific_products",
+            "limit": "count agreement supports operational completion; it does not prove per-row coordinate or filter-mask equality"}
 
 
 def audit_experiment_workloads(experiment: dict, output_dir, *, reference: dict | None = None) -> dict:
@@ -314,7 +350,10 @@ def audit_experiment_workloads(experiment: dict, output_dir, *, reference: dict 
                                       "record_sha256": attempt["record_sha256"], "saved_product_issues": attempt["issues"],
                                       "acceptance": acceptance}, separators=(",", ":"), allow_nan=False) + "\n")
     measured = counts["measured"]
+    onboard = experiment["manifest"]["workload"].get("output_policy") == "onboard"
     summary = {"acceptance_schema_version": 1,
+               "output_policy": "onboard" if onboard else "validation",
+               "scope": "onboard_summary_reference_checks" if onboard else "per_row_numerical_reference_checks",
                "status": "accepted" if measured["started"] > 0 and measured["accepted"] == measured["started"]
                          and counts["warmup"]["accepted"] == counts["warmup"]["started"]
                          and not counts["unknown"]["started"] else "incomplete_or_failed",
@@ -322,6 +361,7 @@ def audit_experiment_workloads(experiment: dict, output_dir, *, reference: dict 
                "wall_seconds": time.monotonic() - started, "process_cpu_seconds": time.process_time() - cpu_started,
                "timing_scope": "postmeasurement_scientific_acceptance_excluded_from_worker_and_measured_campaign_clocks",
                "journal": "workload-acceptance.jsonl.gz", "original_attempts_modified": False,
-               "limit": "software scientific fidelity; not complete hardware/thermal/PMU acceptance"}
+               "limit": ("recorded counts/settings/domain checks; per-row numerical fidelity unavailable"
+                         if onboard else "software scientific fidelity; not complete hardware/thermal/PMU acceptance")}
     _atomic_write_json(destination / "workload-acceptance.json", summary)
     return summary

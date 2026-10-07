@@ -1,5 +1,6 @@
 {
   "schema_version": 1,
+  "output_policy": "onboard",
   "name": "comparison",
   "description": "Full-data randomized backend comparison with a warm-up and thermal baseline control.",
   "python_version": "3.13.5",

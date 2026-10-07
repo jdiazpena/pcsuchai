@@ -39,3 +39,36 @@ def test_package_drift_is_rejected(tmp_path: Path) -> None:
     result = compare_sessions(paths, tmp_path / "rejected")
     assert result["status"] == "not_comparable"
     assert any(item["field"] == "packages" for item in result["mismatches"])
+
+
+def test_onboard_counts_comparison_does_not_require_numeric_equality(tmp_path):
+    """Synthetic sessions exercise comparison labels, not numerical fidelity."""
+
+    paths = []
+    for label in ("pi4", "pi5"):
+        data = _session(label)
+        data["settings"]["output_policy"] = "onboard"
+        data["scientific_outputs_consistent"] = None
+        data["output_summaries_consistent"] = True
+        path = tmp_path / f"{label}.json"
+        path.write_text(json.dumps(data))
+        paths.append(path)
+    result = compare_sessions(paths, tmp_path / "combined")
+    assert result["status"] == "comparable"
+    assert result["numerical_comparison_scope"] == "recorded_counts_only"
+
+
+def test_output_policies_cannot_share_a_device_comparison(tmp_path):
+    """Identical runtime/input controls cannot erase a different saved workload."""
+
+    paths = []
+    for label, policy in (("pi4", "onboard"), ("pi5", "validation")):
+        data = _session(label)
+        data["settings"]["output_policy"] = policy
+        data["output_summaries_consistent"] = True
+        path = tmp_path / f"{label}.json"
+        path.write_text(json.dumps(data))
+        paths.append(path)
+    result = compare_sessions(paths, tmp_path / "rejected")
+    assert result["status"] == "not_comparable"
+    assert any(item["field"] == "settings" for item in result["mismatches"])

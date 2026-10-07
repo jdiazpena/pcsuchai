@@ -45,8 +45,11 @@ def compare_sessions(paths: list[str | Path], output_dir: str | Path) -> dict:
     for _, session in loaded:
         if session.get("status") != "complete":
             mismatches.append({"device": session.get("device_label"), "field": "status", "expected": "complete", "actual": session.get("status")})
-        if not session.get("scientific_outputs_consistent"):
-            mismatches.append({"device": session.get("device_label"), "field": "scientific_outputs_consistent", "expected": True, "actual": session.get("scientific_outputs_consistent")})
+        consistency = (session.get("output_summaries_consistent") if session["settings"].get("output_policy") == "onboard"
+                       else session.get("scientific_outputs_consistent"))
+        if not consistency:
+            field = "output_summaries_consistent" if session["settings"].get("output_policy") == "onboard" else "scientific_outputs_consistent"
+            mismatches.append({"device": session.get("device_label"), "field": field, "expected": True, "actual": consistency})
         if session.get("official") is not True:
             mismatches.append({"device": session.get("device_label"), "field": "official", "expected": True, "actual": session.get("official")})
         candidate = _signature(session)
@@ -57,6 +60,9 @@ def compare_sessions(paths: list[str | Path], output_dir: str | Path) -> dict:
     destination = Path(output_dir)
     destination.mkdir(parents=True, exist_ok=False)
     report = {
+        "output_policy": loaded[0][1]["settings"].get("output_policy", "validation"),
+        "numerical_comparison_scope": ("recorded_counts_only" if loaded[0][1]["settings"].get("output_policy") == "onboard"
+                                       else "retained_scientific_tables"),
         "schema_version": 1,
         "created_utc": datetime.now(timezone.utc).isoformat(),
         "status": "comparable" if not mismatches else "not_comparable",

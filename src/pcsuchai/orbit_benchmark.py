@@ -62,6 +62,7 @@ def run_orbit_benchmark(
             "--measurements", str(paths["measurements"]), "--tle", str(paths["tle"]),
             "--eop", str(paths["eop"]), "--output-dir", str(run_dir),
             "--orbit-backend", backend, "--magnetic-backend", "none", "--benchmark",
+            "--output-policy", "validation",
         ]
         if limit is not None:
             result.extend(("--limit", str(limit)))

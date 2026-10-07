@@ -5,6 +5,12 @@ NPZ use lossless compression: no rounding, downsampling, duplicate removal or
 replacement of NaN/infinity is performed. Compression requires only Python's
 standard library and the already-required NumPy.
 
+This statement applies to acquired **benchmark observations**. Scientific output
+follows [output policies](output-policies.md): onboard measured jobs save images,
+settings and counts; validation saves detailed arrays/tables/masks. Onboard does
+not acquire scientific array files merely to retain them. Both policies execute
+the complete requested calculations and filters. Existing results are preserved.
+
 ## Retained data
 
 - The canonical `data/raw/langmuir-2018-2.csv` is included in Git and release
@@ -13,11 +19,11 @@ standard library and the already-required NumPy.
   plot-profile input under `benchmark/inputs/`, with source and compressed
   checksums in `input-snapshots.json`. `source-snapshot.tar.gz` retains exactly
   the code/configuration files identified by the recorded source digest.
-- Each complete analysis saves `raw-products-<backends>.npz`: all trusted
+- Each complete **validation-policy** analysis saves `raw-products-<backends>.npz`: all trusted
   instrument fields, timestamps, headers, source rows, TLE selection arrays,
   orbit arrays, magnetic/footpoint arrays, error codes and the three basic-map
   masks. Nonfinite values and duplicate timestamps are preserved.
-- Each configured plot saves `<plot>.selection.npz`: the full source-row mask,
+- Each **validation-policy** configured plot saves `<plot>.selection.npz`: the full source-row mask,
   full x/y/value arrays, labels and scale before rendering. The input recipe
   is recorded in the manifest/profile. These NPZ arrays align with the rows in
   `raw-products-<backends>.npz`; no scientific data are embedded only in PNGs.
@@ -29,7 +35,7 @@ standard library and the already-required NumPy.
   stage boundaries and in the slower system timeline, not every 50 ms. An
   empty metric is unavailable/not polled, never an invented zero.
   Minimal worker instrumentation deliberately acquires no stage samples; it
-  still retains all scientific arrays/products and the independent external
+  still retains its selected-policy scientific products and the independent external
   supervisor/board timeline. No earlier samples are discarded by this choice.
 - Each run retains complete stdout/stderr logs and its system samples in
   `stdout.log.gz`, `stderr.log.gz`, `system-telemetry.csv.gz`, plus its complete

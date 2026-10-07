@@ -1,5 +1,6 @@
 {
   "schema_version": 1,
+  "output_policy": "onboard",
   "name": "full-products",
   "description": "Full-data benchmark including all archive-parity image products.",
   "python_version": "3.13.5",

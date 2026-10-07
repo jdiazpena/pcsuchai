@@ -231,11 +231,16 @@ def verify_import_images(directory: str | Path) -> dict:
     for filename in sorted(root.rglob("manifest-*.json")):
         try:
             manifest = json.loads(filename.read_text())
-            check = validate_pipeline_images(
-                manifest, paths.resolve(manifest["raw_products_npz"]),
-                tuple(paths.resolve(path) for path in manifest["plot_selection_files"]),
-                path_resolver=paths.resolve,
-            )
+            from .output_policy import effective_output_policy
+            if effective_output_policy(manifest) == "onboard":
+                from .onboard_validation import validate_onboard_manifest
+                check = validate_onboard_manifest(manifest, path_resolver=paths.resolve)
+            else:
+                check = validate_pipeline_images(
+                    manifest, paths.resolve(manifest["raw_products_npz"]),
+                    tuple(paths.resolve(path) for path in manifest["plot_selection_files"]),
+                    path_resolver=paths.resolve,
+                )
         except (ValueError, OSError, KeyError, TypeError) as exc:
             check = {"passed": False, "error": f"{type(exc).__name__}: {exc}", "images": []}
         manifests.append({"manifest": filename.relative_to(root).as_posix(), **check})

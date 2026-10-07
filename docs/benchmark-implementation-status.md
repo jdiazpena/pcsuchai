@@ -959,3 +959,29 @@ Final command exit 0/raw logs are retained in
 `outputs/verification/retention-fault-workflow/command-receipts/2026/09/15/20260915T192202.529149Z-native-retention-faults-final-continuation-702f60306a51/`.
 API/command outcomes are not successful benchmark attempts or hardware results.
 Broader release/fault audit and the actual target experiments remain open.
+
+### Onboard scientific output policy — 2026-10-07
+
+The local output-policy implementation is complete, separately from the wider
+four-board measurement plan. `onboard` keeps the same requested science/plots,
+images/settings/counts and every acquired benchmark observation, without routine
+scientific tables/masks. `validation` retains full numerical acceptance products.
+Policies are recorded in workload/comparison identities; saved count checks are
+not represented as per-row numerical fidelity. Old runs remain readable and
+explicitly historical, with no rewritten records.
+
+The existing Miniconda Python 3.14.7 passed **572 tests**, full-data native
+array/selection/PNG parity for all four pairs and 35 images each, and the actual
+local fifteen-gate acceptance plus post-exit eighteen-check artifact audit.
+Measured local product sizes fell from 153,377,786 to 50,135,072 bytes across the
+four pairs (**67.31%**), without reducing the full plot profile. The existing Pi 5
+import passed its 443-file/152-image audit and four-attempt numerical report;
+all 445 files including import metadata stayed byte-identical through reporting.
+Exact paths, source digest, tests, per-pair sizes, limits and six-step audit are in
+[output policies](output-policies.md#inspected-local-evidence--2026-10-07).
+
+No Pi action, installation, network access or publication took place. Prior Pi 5
+acceptance certifies its recorded earlier source, not this revision. Repeat
+target acceptance before a new measured series; do not resume older runs with
+changed code. Hardware pilots/calibration and the broader per-board benchmark
+completion gates remain open.

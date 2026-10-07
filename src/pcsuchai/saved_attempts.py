@@ -143,6 +143,7 @@ def controlled_settings(experiment: dict, block: dict) -> dict:
         "launch_observation_declaration": runtime.get("launch_observation_declaration"),
         "kind": data["kind"], "execution": execution, "thermal": data["thermal"],
         "selection": {"method": block["selection_method"], "size": block["size"]},
+        "output_policy": data["workload"].get("output_policy", "validation"),
         "plot_profile": {"name": profile["name"], "input_sha256": inputs.get(f"plot:{profile['name']}", {}).get("sha256")},
         "observation": {**data["observation"], "levels": [block["observation_level"]], "counter_groups": [block["counter_group"]]},
         "retention": data["retention"], "validation": data["validation"],
@@ -175,6 +176,16 @@ def validate_saved_products(record: dict, paths: PortablePaths, *, measurements=
     import numpy as np
 
     artifacts = record.get("artifacts", {})
+    if isinstance(artifacts, dict) and "manifest_json" in artifacts:
+        manifest = _json(verify_artifact(artifacts["manifest_json"], paths))
+        from .output_policy import effective_output_policy
+        if record.get("output_policy", effective_output_policy(manifest)) != effective_output_policy(manifest):
+            raise ValueError("attempt and manifest output policies differ")
+        if expected_block is not None and effective_output_policy(manifest) != effective_output_policy(expected_block):
+            raise ValueError("attempt output policy differs from its frozen block")
+        if effective_output_policy(manifest) == "onboard":
+            return _validate_saved_onboard(record, paths, manifest, measurements=measurements,
+                                           specs=specs, expected_block=expected_block)
     required = {"manifest_json", "positions_csv", "magnetic_positions_csv", "particle_map_png",
                 "magnetic_particle_map_png", "footpoint_particle_map_png", "raw_products_npz", "benchmark_json"}
     if not isinstance(artifacts, dict) or not required <= artifacts.keys():
@@ -250,6 +261,68 @@ def validate_saved_products(record: dict, paths: PortablePaths, *, measurements=
             "workload_details": workload_details,
             "raw_products": str(resolved["raw_products_npz"]), "selection_files": [str(path) for path in selections],
             "scope": "retained_bytes_domain_masks_and_decoded_images_not_full_absolute_acceptance"}
+
+
+def _validate_saved_onboard(record, paths, manifest, *, measurements, specs, expected_block):
+    """Audit onboard files/counts without inventing absent numerical evidence."""
+
+    from .onboard_validation import validate_onboard_manifest
+    from .output_policy import policy_origin
+
+    artifacts = record["artifacts"]
+    required = {"manifest_json", "particle_map_png", "magnetic_particle_map_png", "footpoint_particle_map_png", "benchmark_json"}
+    if manifest.get("instrumentation", {}).get("level") != "minimal":
+        required.add("raw_benchmark_samples")
+    if not required <= artifacts.keys():
+        raise ValueError("onboard attempt lacks required image/settings/benchmark products")
+    if {"positions_csv", "magnetic_positions_csv", "raw_products_npz"} & artifacts.keys() or record.get("plot_selection_artifacts"):
+        raise ValueError("onboard attempt unexpectedly contains scientific array/table artifacts")
+    resolved = {key: verify_artifact(value, paths) for key, value in artifacts.items()}
+    configured = [verify_artifact(value, paths) for value in record.get("configured_plot_artifacts", [])]
+    image_bindings = {"plot": "particle_map_png", "magnetic_plot": "magnetic_particle_map_png", "footpoint_plot": "footpoint_particle_map_png"}
+    for role, artifact in image_bindings.items():
+        if paths.resolve(manifest[role]["path"]) != resolved[artifact]:
+            raise ValueError("onboard image metadata does not bind its retained artifact")
+    if configured != [paths.resolve(item["path"]) for item in manifest.get("configured_plots", [])]:
+        raise ValueError("onboard configured image artifacts differ from manifest")
+    stages = _json_list(resolved["benchmark_json"])
+    check = validate_onboard_manifest(manifest, stages=stages, measurements=measurements, specs=specs, path_resolver=paths.resolve)
+    variant = {}
+    if expected_block is not None:
+        selection = manifest.get("workload_selection", {})
+        variant = {"observation_level": manifest.get("instrumentation", {}).get("level") == expected_block["observation_level"],
+                   "selection_method": selection.get("method") == expected_block["selection_method"],
+                   "selection_size": selection.get("requested_size") == expected_block["size"],
+                   "backend_pair": f"{manifest.get('orbit_backend')}-{manifest.get('magnetic_backend')}" in expected_block["pairs"]}
+    plot_products = [{"name": role, **{k: v for k, v in manifest[role].items() if k != "path"}} for role in image_bindings]
+    plot_products += [{"name": item["spec"]["name"], **{k: v for k, v in item.items() if k != "path"}}
+                      for item in manifest.get("configured_plots", [])]
+    for plot, image in zip(plot_products, check["images"]):
+        reported = plot.get("size_bytes")
+        actual = Path(image["resolved_path"]).stat().st_size if image["passed"] else None
+        plot.update(metadata_size_bytes=reported, size_bytes=actual,
+                    size_source="stat of bound/hash-verified readable PNG" if actual is not None else "unavailable_invalid_image",
+                    metadata_size_matches_file=type(reported) is int and reported == actual)
+    rows_match = type(record.get("observations")) is int and record["observations"] == manifest["observations"]
+    return {"passed": check["passed"] and rows_match and all(variant.values()),
+            "output_policy": "onboard", "output_policy_origin": policy_origin(manifest),
+            "onboard_manifest": manifest, "images": check, "raw_audit": None,
+            "row_count_matches": rows_match, "frozen_variant_checks": variant,
+            "plot_filter_validation": {"passed": check["passed"], "scope": "saved_counts_and_frozen_recipes_only"},
+            "stage_records": stages, "raw_products": None, "selection_files": [],
+            "workload_details": {"observed_rows": manifest["observations"], "selection": manifest["workload_selection"],
+                                 "plot_products": plot_products, "output_policy": "onboard",
+                                 "source_row_identity": "fixed-endian row-ID digest; full row list not retained"},
+            "scope": check["scope"], "numerical_fidelity": check["numerical_fidelity"]}
+
+
+def _json_list(path):
+    """Require a valid stage-record list; reject malformed entries explicitly."""
+
+    value = json.loads(Path(path).read_text())
+    if not isinstance(value, list) or any(not isinstance(row, dict) or not isinstance(row.get("stage"), str) for row in value):
+        raise ValueError("retained stage product has malformed records")
+    return value
 
 
 def iter_saved_attempts(experiment: dict):
@@ -404,6 +477,8 @@ def iter_saved_attempts(experiment: dict):
                     "block_position": block_info["position"], "run_id": run_dir.name, "attempt_number": number,
                     "kind": kind, "pair": pair, "recorded_status": record.get("status"), "status": status,
                     "classification": "excluded_corrupt_or_uncontrolled" if issues or controls is None else "diagnostic_saved_product_valid" if status == "complete" else status,
+                    "output_policy": experiment["manifest"]["workload"].get("output_policy", "validation"),
+                    "output_policy_origin": "explicit" if "output_policy" in experiment["manifest"]["workload"] else "historical_implicit_validation",
                     "issues": issues, "checkpoint_indexed": run_dir.name in execution,
                     "directory": str(run_dir), "started_utc": record.get("started_utc", intent.get("started_utc")),
                     "worker_seconds": worker_seconds, "worker_timer_scope": worker_scope,

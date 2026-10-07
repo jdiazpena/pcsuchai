@@ -96,7 +96,9 @@ class ExperimentManifest:
             raise ValueError("experiment name must be a nonempty string")
         _choice(root["kind"], ("acceptance", "equal_work", "sustained", "persistent", "counters", "scaling", "overhead"), "kind")
         _positive(root["sessions"], "sessions", integer=True)
-        work = _object(root["workload"], "workload", {"measurements", "tle", "eop", "pairs", "selection", "plot_profiles"})
+        work = _object(root["workload"], "workload", {"measurements", "tle", "eop", "pairs", "selection", "plot_profiles"}, {"output_policy"})
+        from .output_policy import effective_output_policy
+        effective_output_policy(work)
         for key in ("measurements", "tle", "eop"):
             if not isinstance(work[key], str) or not work[key]:
                 raise ValueError(f"workload.{key} must be a path string")

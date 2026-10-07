@@ -3,6 +3,14 @@
 An operator normally chooses one master script and supplies only a
 non-identifying device label. Run these commands from the repository root.
 
+The current performance configurations select `output_policy: onboard`. They
+save the requested images, settings and counts while retaining all acquired
+benchmark observations. The separate acceptance validation saves detailed
+scientific arrays/tables/masks. Plot profile and observation level are independent
+controls; full-profile onboard jobs still render every configured image. See
+[output policies](output-policies.md) and the canonical
+[ordered workflow](raspberry-pi-benchmark-workflow.md).
+
 Every official scenario is one uninterrupted process:
 
 ```text
@@ -14,7 +22,7 @@ trusted measurements + TLE/EOP
      magnetic conversion
      (AACGMv2/ApexPy)
              ↓
- analysis + geographic/magnetic/footpoint plots + auditable tables
+ analysis + geographic/magnetic/footpoint plots + selected-policy products
 ```
 
 Stage timers observe boundaries inside that process; they do not split the
@@ -68,8 +76,9 @@ label or notes.
    thermal, throttling, and Python details without network identifiers.
 4. Starts every measurement in a clean Python process.
 5. Uses recorded random or balanced order and declared numerical-library threads.
-6. Validates required artifacts and hashes derived scientific CSV files across
-   identical repeats.
+6. Validates required artifacts for the selected policy. Validation-mode repeats
+   compare scientific CSV hashes; onboard repeats compare recorded counts and
+   explicitly report per-row numerical consistency as unavailable.
 7. Atomically maintains `benchmark-session.checkpoint.json` throughout a long
    campaign and supports exact-workload resume.
 8. Appends and flushes timestamped events and system telemetry while the
@@ -146,18 +155,19 @@ outputs/benchmarks/<device>/<YYYY>/<MM>/<DD>/<UTC>-<profile>/
     │           ├── stdout.log.gz
     │           ├── stderr.log.gz
     │           └── products/
-    │               ├── raw-products-<backends>.npz
+    │               ├── raw-products-<backends>.npz  (validation only)
     │               ├── benchmark-<backends>.samples.csv.gz
-    │               ├── <plot>.selection.npz
-    │               └── CSVs, PNGs, benchmark summaries and manifest
+    │               ├── <plot>.selection.npz  (validation only)
+    │               └── PNGs, benchmark summaries and manifest
     └── perf/
 ```
 
 `run-timeseries.csv` is the easiest file for studying total runtime,
 temperature, available RAM, CPU frequency, throttling, and output size across
 repeats. `stage-timeseries.csv` contains the same sequence broken down into
-loading, TLE selection, orbit propagation, magnetic conversion, CSV writing,
-and each plot. `scenario-summary.csv` contains mean, median, population
+loading, TLE selection, orbit propagation, magnetic conversion, and each plot;
+validation mode also measures its scientific array/CSV writing stages.
+`scenario-summary.csv` contains mean, median, population
 standard deviation, minimum, maximum, and interpolated 95th percentile.
 
 `system-telemetry.csv` is the live continuous UTC timeline. By default it is flushed

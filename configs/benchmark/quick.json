@@ -1,5 +1,6 @@
 {
   "schema_version": 1,
+  "output_policy": "onboard",
   "name": "quick",
   "description": "Fast installation and end-to-end health check; not publishable performance data.",
   "python_version": "3.13.5",

@@ -76,6 +76,14 @@ do not launch another copy just because observation timed out.
 
 ## Freeze the intended work
 
+Declare `workload.output_policy`: `onboard` saves images/settings/counts;
+`validation` additionally saves scientific tables, arrays and exact plot masks.
+Published performance protocols select onboard; acceptance selects validation.
+All recipes and calculations still run in both modes. Observation levels remain
+independent. Missing historical policy fields mean validation and remain labelled
+as historical without rewriting their hashes or block identities. See
+[output policies](output-policies.md) for completion/reporting limits.
+
 Version-1 manifests reject unknown fields and contradictory settings. Copy and
 edit a protocol *before* starting it; each new experiment stores its immutable
 effective manifest. No stopping-rule override is accepted during resume.

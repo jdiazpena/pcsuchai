@@ -35,14 +35,16 @@ policy correctly reports `pcsuchai` as not installed locally; that result is
 retained rather than renamed a pass. Pi installation must satisfy the entire
 policy, including the installed project and native imports.
 
-The current executable-source inventory is
+The executable-source inventory for the pre-output-policy revision was
 `dbd3abe44b776c5e1d77b61abd59cf083ea5343c64c26aec55e298ae8b34a5b1`
 (120 files). Root documentation/tests are outside that scientific inventory;
 the Git commit and release archive additionally bind those files. Earlier
 source-bound certificates and fault/operation matrices remain historical
 evidence for their recorded revisions, not substitute current-source results.
-Current-source regression/full-science results are recorded below only after
-their real command handles return.
+Those results do not certify the later output-policy implementation. Its local
+regression/full-science evidence is recorded in [output policies](output-policies.md)
+only after the actual commands finish. Target reacceptance of that revision is
+outside the local implementation goal.
 
 The release audit exposed generated `.egg-info` text files in the previous
 source inventory. Building a wheel changed that inventory despite unchanged
@@ -54,7 +56,7 @@ The source/release group passed **14 tests in 0.37 seconds**; the preceding
 full suite passed **556 tests in 207.92 seconds**, but predates this final
 fingerprint fix. Its XML remains historical, not final-source certification.
 
-The final-source suite passed **557 tests in 206.44 seconds**, with zero
+That revision's final-source suite passed **557 tests in 206.44 seconds**, with zero
 failures/errors/skips, recorded in
 `outputs/verification/release-workflow/python314-full-tests-source-identity.xml`.
 The project wheel built without installing packages or fetching dependencies;

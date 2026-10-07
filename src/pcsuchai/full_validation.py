@@ -170,6 +170,7 @@ def run_full_validation(
                 output_dir=run_dir, orbit_backend=orbit_backend,
                 magnetic_backend=magnetic_backend, limit=limit,
                 plot_config_path=plot_file, benchmark=True,
+                output_policy="validation",
             )
             manifest = json.loads(Path(outputs.manifest_json).read_text(encoding="utf-8"))
             stages = json.loads(Path(outputs.benchmark_json).read_text(encoding="utf-8"))

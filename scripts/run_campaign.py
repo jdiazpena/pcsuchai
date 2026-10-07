@@ -175,6 +175,7 @@ def _campaign_main() -> int:
         command.extend(("--limit", str(config["limit"])))
     if config.get("plot_config"):
         command.extend(("--plot-config", str(root / config["plot_config"])))
+    command.extend(("--output-policy", config.get("output_policy", "validation")))
     if config.get("cooldown_until_c") is not None:
         command.extend(("--cooldown-until-c", str(config["cooldown_until_c"])))
     if config.get("collect_perf"):

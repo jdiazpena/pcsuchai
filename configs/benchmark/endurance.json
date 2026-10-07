@@ -1,5 +1,6 @@
 {
   "schema_version": 1,
+  "output_policy": "onboard",
   "name": "endurance",
   "description": "Three-day full-code campaign with continuous timestamped telemetry and no thermal cooldown.",
   "python_version": "3.13.5",

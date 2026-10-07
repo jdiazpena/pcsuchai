@@ -164,6 +164,15 @@ accepted against their own full-data references, and a passing fifteen-gate
 directory. A stopped, failed or partial campaign is not acceptance.
 The older quick campaign remains a diagnostic, not a replacement for this gate.
 
+Acceptance explicitly saves `validation` products for numerical checks. Normal
+performance manifests explicitly save `onboard` products: the same requested
+calculations and images, with settings/counts rather than scientific arrays.
+Both retain every acquired benchmark observation. Do not change the plot
+profile or observation level just to select an output policy. See
+[output policies](../output-policies.md) for the exact contract and limitations.
+After a source or dependency change, repeat acceptance before beginning a new
+benchmark series; do not resume an older series with changed code.
+
 The installer itself is deliberately tested on each Pi as dependency work.
 Scientific source code is not edited or debugged on a Pi. Any scientific or
 pipeline failure is reproduced and fixed on the local development PC first.
