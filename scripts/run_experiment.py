@@ -91,6 +91,15 @@ def main() -> int:
     export = commands.add_parser("export", help="retain all original bytes in a verified transfer bundle")
     export.add_argument("directory", type=Path)
     export.add_argument("--output", type=Path, required=True)
+    package = commands.add_parser("package", help="one final file: existing export plus its matching master/export logs; no rerun")
+    package.add_argument("bundle", type=Path)
+    package.add_argument("--output", type=Path, required=True)
+    package.add_argument("--receipt-root", type=Path, action="append", default=None,
+                         help="optional log search folder; repeat only when logs were moved from their original locations")
+    unpack = commands.add_parser("import-package", help="verify and unpack a final one-file handoff without rerunning science")
+    unpack.add_argument("bundle", type=Path)
+    unpack.add_argument("directory", type=Path)
+    unpack.add_argument("--sha256", default=None)
     imported = commands.add_parser("import", help="verify a bundle into a new directory without overwriting")
     imported.add_argument("bundle", type=Path)
     imported.add_argument("directory", type=Path)
@@ -120,6 +129,14 @@ def main() -> int:
     master_result = None
     master_error = None
     try:
+        if arguments.command in ("package", "import-package"):
+            from pcsuchai.final_package import package_export, import_package
+            if arguments.command == "package":
+                result = package_export(arguments.bundle, arguments.output, receipt_roots=arguments.receipt_root)
+            else:
+                result = import_package(arguments.bundle, arguments.directory, expected_sha256=arguments.sha256)
+            print(json.dumps(result, indent=2))
+            return 2 if result.get("passed") is False else 0
         if arguments.command == "costs":
             from pcsuchai.operation_costs import report_operation_costs
             result = report_operation_costs(arguments.directories, arguments.output)

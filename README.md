@@ -100,6 +100,12 @@ closing SSH; neither automatically resumes after reboot. Low-space/thermal stops
 preserve earlier results. Raw-data reading/export is documented in
 `docs/raw-data-retention.md`.
 
+After export finishes, `python3 scripts/run_experiment.py package EXISTING_EXPORT
+--output NEW_COMPLETE.tar` adds the matching master/export logs to one final
+download without rerunning any analysis. Original files remain untouched. Use
+`import-package` to verify and unpack it; see
+[one-file handoff](docs/final-result-package.md).
+
 Official campaigns first execute `scripts/run_full_validation.sh` semantics and
 require a certificate matching the exact source, inputs, interpreter,
 dependencies, and full 32-plot workload. The acceptance contract is defined in

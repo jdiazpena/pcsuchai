@@ -154,7 +154,11 @@ byte integrity with scientific agreement.
 
 Whole-operation cost receipts are retained separately from immutable science
 payloads; export costs are necessarily produced after the exported inventory.
-Keep/transfer their dated `operation-costs/` directories alongside the bundle.
+After export finishes, run the additional `package` command to include that
+existing archive and matching master/export logs in one final downloadable file.
+No analysis is rerun, originals are retained, and unrelated experiments are not
+mixed. See [one-file packages](final-result-package.md). Older separate-file
+transfers remain supported.
 See [whole-operation-costs.md](whole-operation-costs.md) for locations, compressed
 command output, failed/unfinished cost evidence and the saved-cost audit.
 # Retention-cost reporting

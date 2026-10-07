@@ -224,15 +224,18 @@ outside the experiment (use a distinct timestamped name for each export):
 
 ```bash
 python3 scripts/run_experiment.py export EXPERIMENT_DIRECTORY --output outputs/pi5-first-test.tar.gz
+python3 scripts/run_experiment.py package outputs/pi5-first-test.tar.gz --output outputs/pi5-first-test-complete.tar
 ```
 
-Save its printed SHA-256. Transfer that archive and digest to the analysis PC.
+Run packaging only after export finishes; skip export if it already exists.
+Save the final package's SHA-256. Transfer that single file and digest to the analysis PC.
 There, replace `TRANSFER_SHA256` with the actual digest and use new destinations:
 
 ```bash
-python3 scripts/run_experiment.py import outputs/pi5-first-test.tar.gz outputs/imported-pi5-first-test --sha256 TRANSFER_SHA256
-python3 scripts/run_experiment.py verify-import outputs/imported-pi5-first-test --images
-python3 scripts/run_experiment.py report outputs/imported-pi5-first-test --output outputs/reports/pi5-first-test
+python3 scripts/run_experiment.py import-package outputs/pi5-first-test-complete.tar outputs/imported-pi5-first-test --sha256 TRANSFER_SHA256
+python3 scripts/run_experiment.py verify-import outputs/imported-pi5-first-test/experiment --images
+python3 scripts/run_experiment.py report outputs/imported-pi5-first-test/experiment --output outputs/reports/pi5-first-test
+python3 scripts/run_experiment.py costs outputs/imported-pi5-first-test/transfer/operation-costs --output outputs/reports/pi5-first-test-costs
 ```
 
 Export/import preserves original bytes, including failed/partial files; report
@@ -240,12 +243,10 @@ commands reconstruct analysis from them without rerunning science. Byte/image
 verification is not cross-device numerical acceptance. Automatic operation-cost
 receipts remain separate from worker latency; see
 [whole-operation costs](whole-operation-costs.md).
-Master receipts live in the experiment parent's `operation-costs/`, and export
-receipts live beside the archive under `operation-costs/`. They are not inside
-the immutable science payload (an archive cannot include its own later export
-cost). Preserve and transfer those actual receipt directories alongside the
-science archive if analyzing complete operating costs; copying only the science
-archive does not transfer these separate records.
+Master/export receipts retain their original dated locations but the extra
+`package` step includes their finished logs together with the existing export.
+Only the final complete file needs transfer; no separate log copies. See
+[one-file packages](final-result-package.md). Scientific-job timing is unchanged.
 
 ## Remaining target evidence
 

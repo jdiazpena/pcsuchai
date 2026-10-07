@@ -19,7 +19,7 @@ the reproducible protocol or public documentation.
 
 | Order | Device | Benchmark label | Architecture | Current status |
 |---:|---|---|---|---|
-| 1 | Raspberry Pi 5 | `pi5` | 64-bit `aarch64` | Acceptance and both operation logs independently verified; pilot pending |
+| 1 | Raspberry Pi 5 | `pi5` | 64-bit `aarch64` | Updated-source acceptance reported passed; new archive verification and pilot pending |
 | 2 | Raspberry Pi 4 | `pi4` | 64-bit `aarch64` | Pending |
 | 3 | Raspberry Pi Zero 2 W | `pi-zero-2-w` | 64-bit `aarch64` | Pending |
 | 4 | Raspberry Pi Zero W | `pi-zero-w` | 32-bit `armv6l` | Installation and acceptance unproven |
@@ -100,26 +100,36 @@ original experiment byte: raw arrays, telemetry, source/input snapshots, logs,
 plot masks/images, warm-ups, failures and partial records—not only summaries.
 It does not delete or rewrite the experiment.
 
-From the computer that can SSH to the Pi, copy both the archive and the relevant
-adjacent `operation-costs/` directories. An archive cannot contain the cost of
-creating itself, so operation receipts remain separate. Example archive copy:
+After export finishes, add one packaging step. If the export already exists,
+run only this new step; do not repeat acceptance or export:
 
 ```bash
-scp pi@PI_HOST:/home/pi/pcsuchai/outputs/DEVICE_LABEL-acceptance-YYYYMMDD.tar.gz .
+python3 scripts/run_experiment.py package /home/pi/pcsuchai/outputs/DEVICE_LABEL-acceptance-YYYYMMDD.tar.gz --output /home/pi/pcsuchai/outputs/DEVICE_LABEL-acceptance-YYYYMMDD-complete.tar
 ```
 
-Place the archive in the local `pcsuchai/outputs/` directory. From the local
+It gathers that exact archive and matching master/export logs into one final
+file. Originals stay untouched. From the computer that can SSH to the Pi,
+copy only the complete file:
+
+```bash
+scp pi@PI_HOST:/home/pi/pcsuchai/outputs/DEVICE_LABEL-acceptance-YYYYMMDD-complete.tar .
+```
+
+Place the file in the local ignored `pcsuchai/results/` directory. From the local
 repository, use a new import directory and the exact printed digest:
 
 ```bash
-python3 scripts/run_experiment.py import outputs/DEVICE_LABEL-acceptance-YYYYMMDD.tar.gz outputs/imported-DEVICE_LABEL-acceptance-YYYYMMDD --sha256 TRANSFER_SHA256
-python3 scripts/run_experiment.py verify-import outputs/imported-DEVICE_LABEL-acceptance-YYYYMMDD --images
-python3 scripts/run_experiment.py report outputs/imported-DEVICE_LABEL-acceptance-YYYYMMDD --output outputs/reports/DEVICE_LABEL-acceptance-YYYYMMDD
+python3 scripts/run_experiment.py import-package results/DEVICE_LABEL-acceptance-YYYYMMDD-complete.tar results/imported-DEVICE_LABEL-acceptance-YYYYMMDD --sha256 TRANSFER_SHA256
+python3 scripts/run_experiment.py verify-import results/imported-DEVICE_LABEL-acceptance-YYYYMMDD/experiment --images
+python3 scripts/run_experiment.py report results/imported-DEVICE_LABEL-acceptance-YYYYMMDD/experiment --output outputs/reports/DEVICE_LABEL-acceptance-YYYYMMDD
+python3 scripts/run_experiment.py costs results/imported-DEVICE_LABEL-acceptance-YYYYMMDD/transfer/operation-costs --output outputs/reports/DEVICE_LABEL-acceptance-YYYYMMDD-costs
 ```
 
 Import must verify every original byte and image. We then inspect the recorded
 source/runtime/dependency identity and compare same-backend numerical products.
 Transfer verification is not itself scientific or hardware acceptance.
+See [one-file final packages](final-result-package.md) for layout, association
+checks, older exports and packaging-cost scope.
 
 ## Stage 4 — Full-data thermal and storage pilot
 
@@ -224,8 +234,9 @@ ended timed work with unknowable remaining duration is recovered, not extended.
 
 ## Stage 8 — Reports and cross-device decision
 
-Export/import/verify every experiment as in Stage 3, preserving separate
-operation receipts. Reconstruct reports only from retained raw records. Include
+Export/package/import/verify every experiment as in Stage 3. Completed master
+and export receipts travel in the same final file. Reconstruct reports only from
+retained raw records. Include
 failures, interruptions, exclusions and unavailable measurements in their real
 denominators. Compare same scientific backends across devices under frozen
 tolerances; AACGMv2 and ApexPy are different magnetic models and are not expected
@@ -243,12 +254,12 @@ Update this table only from retained output or transferred artifacts.
 
 | Device | Install | Acceptance | Export/import | Pilot | Equal work | Scaling/overhead/counters | Sustained/persistent |
 |---|---|---|---|---|---|---|---|
-| Pi 5 | Reported successful | **Passed 2026-10-07**: 4/4 valid, 0 failures; 15-criterion certificate passed; 39.7–40.25°C during smoke jobs | **Passed 2026-10-07**: both archive checksums matched; all 443 experiment files/196,189,884 logical bytes and 152 images independently verified; report reconstructed 4/4 accepted attempts; both master/export operation logs validated and matched to this experiment | Pending | Pending | Pending | Pending |
+| Pi 5 | Reported successful | **Updated source reported passed, 2026-10-07 18:38 UTC**: 4/4 valid, 0 failures/interruptions/retries/skips; full validation passed; 47.95–50.15°C during smoke jobs | Updated-source export/transfer/audit pending. Earlier source: all 443 payload files/196,189,884 logical bytes, 152 images and both operation logs independently verified | Pending | Pending | Pending | Pending |
 | Pi 4 | Pending | Pending | Pending | Pending | Pending | Pending | Pending |
 | Pi Zero 2 W | Pending | Pending | Pending | Pending | Pending | Pending | Pending |
 | Pi Zero W | Pending | Pending | Pending | Pending | Pending | Pending | Pending |
 
-Pi 5 acceptance evidence above comes from independently verified archives
+The earlier Pi 5 acceptance evidence comes from independently verified archives
 transferred by the operator, retaining the original experiment path
 `/home/pi/pcsuchai/outputs/benchmarks/pi5/2026/10/07/20261007T150704.396363Z-acceptance`.
 The Pi produced the acceptance archive in 10.751 seconds. Independent import
@@ -270,7 +281,43 @@ and sizes. The master command took 169.125830 seconds, with 153.593448 seconds
 of parent-process CPU time. The export API took 10.761194 seconds, with
 8.760326 seconds of parent-process CPU time. These containing timings are
 retained separately and are not added to individual scientific-job timings.
-All acceptance evidence requested for Stage 3 is now transferred and verified.
+All acceptance evidence requested for Stage 3 for that earlier source was
+transferred and verified.
+
+### Updated-source Pi 5 acceptance — reported 2026-10-07
+
+After the operator pushed the output-policy implementation and updated the Pi,
+the foreground acceptance command reported root status `complete`, four
+scheduled/started/scientifically-valid smoke attempts, and zero failures,
+interruptions, automatic retries or skips. Full validation reported `pass` for
+both orbit backends, both magnetic models and all 32 configured recipes. The
+reported smoke-job endpoint temperatures were 47.95–50.15°C; these are not a
+thermal pilot or evidence of stable starting conditions.
+
+The new experiment is
+`/home/pi/pcsuchai/outputs/benchmarks/pi5/2026/10/07/20261007T183817.572934Z-acceptance`.
+Its reported certificate is
+`validation/20261007T183835.668432Z/full-validation-certificate.json`.
+The separate master receipt is
+`/home/pi/pcsuchai/outputs/benchmarks/pi5/2026/10/07/operation-costs/2026/10/07/20261007T183817.573209Z-master-run-c42ffae41cc9`.
+
+This is operator-supplied console evidence. The new source/runtime fingerprint,
+saved numerical products, images and operation receipts have not yet been
+independently audited locally. Next is Stage 3 export/transfer/audit, using the
+new archive name `pi5-acceptance-20261007T183817.tar.gz`, followed by the full-data
+onboard thermal/storage pilot. Preserve the earlier acceptance files too.
+
+The operator subsequently reported successful export to
+`/home/pi/pcsuchai/outputs/pi5-acceptance-20261007T183817.tar.gz`, SHA-256
+`21aa2eb6f59aeba2bebabd3d9706ec287c31cc0235a88358a91ea7ac02e7d23b`.
+It contains 443 files/196,191,414 logical bytes and is 147,938,441 compressed
+bytes. Export took 10.898320 seconds; its containing operation took 10.905566
+seconds, with 8.886473 seconds of parent CPU time. The separate export receipt is
+`/home/pi/pcsuchai/outputs/operation-costs/2026/10/07/20261007T185619.795910Z-export-ebf36a13f86f`.
+Transfer the archive and both exact master/export folders from the computer
+that can reach the Pi. The local reviewer must verify the archive digest and
+recorded source/runtime before confirming updated-source acceptance. These
+reported counts/timings are not a locally verified import or hardware benchmark.
 
 The full scientific/statistical acceptance contract remains
 [benchmark-completion-plan.md](benchmark-completion-plan.md). This workflow is

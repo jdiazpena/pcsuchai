@@ -111,9 +111,13 @@ comparisons still require the archived source/input/runtime/control evidence.
 
 Cost receipts live outside immutable science/import/report payloads. Export
 still includes every original experiment byte but cannot include its own later
-export cost/digest. Retain/transfer the relevant `operation-costs/` directories
-alongside the science bundle if these operating costs are needed on the analysis
-PC. Import/report costs describe the machine where those operations ran, not
+export cost/digest. The additional [final packaging step](final-result-package.md)
+runs after export has completed and wraps that existing archive with its matching
+master/export logs in one file. It does not rerun science or create a further
+external packaging receipt that would require another download. Its narrowly
+scoped preparation/payload-copy cost lives in package metadata, explicitly
+excluding its own later trailer/verification/publication. Import/report costs
+describe the machine where those operations ran, not
 Pi target allocation or satellite transmission. No link rate, power meter,
 external sensor or hardware measurement is invented.
 
